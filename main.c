@@ -174,11 +174,11 @@ typedef enum {
 #define MENU_ITEM_COUNT  6u
 static const char * const k_menu_labels[MENU_ITEM_COUNT] = {
     "Display Mode",
-    "Time Format",
+    "12H/24H Format",
     "Set Time",
     "Set Date",
     "Set Alarm",
-    "Disable Alarm"
+    "Alarm Off"
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -565,16 +565,16 @@ static void render_menu(void)
 
     /* ─── MAIN MENU ─── */
     case MENU_MAIN: {
-        oledC_DrawString(0u, 10u, 1u, 1u, (uint8_t *)"-- MENU --", COL_MENU_HDR);
+        /* Items: scale-1 text (8 px tall), 11 px row pitch, start at y=10 */
         for (uint8_t i = 0u; i < MENU_ITEM_COUNT; i++) {
-            uint8_t y = (uint8_t)(22u + i * 12u);
+            uint8_t y = (uint8_t)(10u + i * 11u);
             if (y > 88u) break;
-            uint16_t col = (i == g_menu_cur) ? COL_MENU_SEL : COL_MENU_ITEM;
-            if (i == g_menu_cur) {
-                oledC_DrawString(0u, y, 1u, 1u, (uint8_t *)">", COL_MENU_SEL);
-            }
-            oledC_DrawString(8u, y, 1u, 1u, (uint8_t *)k_menu_labels[i], col);
+            oledC_DrawString(4u, y, 1u, 1u,
+                             (uint8_t *)k_menu_labels[i], COL_MENU_ITEM);
         }
+        /* White rectangle outline around the selected row */
+        uint8_t sel_y = (uint8_t)(10u + g_menu_cur * 11u);
+        oledC_DrawRectangle(0u, sel_y - 2u, 95u, sel_y + 9u, COL_TEXT);
         break;
     }
 
@@ -936,7 +936,14 @@ int main(void)
                     alarm_stop();
                 }
             }
-            need_draw = true;   /* time changed → must redraw */
+
+            if (g_mode == MODE_MENU) {
+                /* Menu: just overwrite the corner clock text — no screen clear,
+                 * no flicker.  Full redraw only happens on button presses. */
+                draw_corner_clock();
+            } else {
+                need_draw = true;   /* clock / alarm screens need full redraw */
+            }
         }
 
         /* ── 2. READ BUTTONS ──────────────────────────────────────────── */
@@ -1046,7 +1053,7 @@ int main(void)
         s1_prev = s1;
         s2_prev = s2;
 
-        DELAY_milliseconds(10);     /* ~100 Hz  →  long-press = 200 loops = 2 s */
+        DELAY_milliseconds(10);     /* ~100 Hz loop rate; long-press is ISR-timed */
     }
 
     return 0;
