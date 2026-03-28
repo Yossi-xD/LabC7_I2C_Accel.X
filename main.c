@@ -534,11 +534,13 @@ static void draw_corner_clock(void)
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * DIGITAL CLOCK RENDERER
+ * Layout: small watch icon top-left │ large centred time │
+ *         am/pm bottom-left         │ DD/MM bottom-right
  * ═══════════════════════════════════════════════════════════════════════════ */
 static void render_digital(void)
 {
     char    time_buf[10];
-    char    date_buf[8];
+    char    date_buf[6];
     uint8_t h  = g_hour;
     bool    pm = false;
 
@@ -548,19 +550,27 @@ static void render_digital(void)
         if (h == 0u) h = 12u;
     }
 
-    /* ── Large HH:MM:SS ── */
+    /* ── Small watch icon: outline circle + two hands, top-left ── */
+    oledC_DrawCircle(6u, 6u, 5u, COL_TEXT);        /* face ring           */
+    draw_line_any(6u, 6u, 6u, 2u, COL_TEXT);       /* minute hand → 12   */
+    draw_line_any(6u, 6u, 9u, 6u, COL_TEXT);       /* hour hand   → 3    */
+
+    /* ── Large centred HH:MM:SS ──
+     * sx=2: each char advances 5*2+1 = 11 px; 8 chars × 11 = 88 px total.
+     * x = (96 - 88) / 2 = 4 to centre on the 96-px-wide screen.          */
     snprintf(time_buf, sizeof(time_buf), "%02u:%02u:%02u", h, g_min, g_sec);
-    oledC_DrawString(0u, 30u, 2u, 2u, (uint8_t *)time_buf, COL_TIME);
+    oledC_DrawString(4u, 34u, 2u, 2u, (uint8_t *)time_buf, COL_TEXT);
 
-    /* AM/PM label (12h mode only) */
+    /* ── am / pm  bottom-left (12h mode only) ── */
     if (g_fmt == FMT_12H)
-        oledC_DrawString(72u, 52u, 1u, 1u, (uint8_t *)(pm ? "PM" : "AM"), COL_TEXT);
+        oledC_DrawString(2u, 86u, 1u, 1u,
+                         (uint8_t *)(pm ? "pm" : "am"), COL_TEXT);
 
-    /* ── Date: DD/MM ── */
+    /* ── Date DD/MM  bottom-right ── */
     snprintf(date_buf, sizeof(date_buf), "%02u/%02u", g_day, g_month);
-    oledC_DrawString(4u, 76u, 1u, 1u, (uint8_t *)date_buf, COL_DATE);
+    oledC_DrawString(58u, 86u, 1u, 1u, (uint8_t *)date_buf, COL_TEXT);
 
-    /* ── Alarm icon top-right ── */
+    /* ── Alarm icon top-right (only when alarm is set) ── */
     if (g_al_enabled)
         draw_alarm_icon(84u, 4u);
 }
