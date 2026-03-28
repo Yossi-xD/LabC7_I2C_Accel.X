@@ -218,9 +218,6 @@ volatile bool     g_tick        = false;   /* set every second by TMR1 ISR      
 volatile bool     g_blink_state = false;   /* toggled every second for alarm blink */
 volatile uint16_t g_uptime_secs = 0u;      /* free-running seconds counter         */
 
-/* Set true whenever we return to clock mode so render_digital does a full
- * clear+redraw on its next call instead of a partial update. */
-static bool g_clock_force_full = true;
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * FORWARD DECLARATIONS
@@ -322,21 +319,24 @@ static void adc_init(void)
     ANSBbits.ANSB12   = 1;   /* RB12 / AN8 → analog mode */
     TRISBbits.TRISB12 = 1;   /* input */
 
+    AD1CON1bits.ADON = 0;    /* ensure off before configuring */
     AD1CON1 = 0x0000;        /* integer output, manual sample/convert */
     AD1CON2 = 0x0000;        /* Vdd/Vss reference, CH0, 1 sample/interrupt */
     AD1CON3 = 0x0F02;        /* Tad = 3·Tcy (750 ns @ 4 MHz), 15 Tad sample */
-    AD1CHS  = 0x0008u;       /* positive input = AN8 */
+    AD1CHS  = 8u;            /* positive input = AN8 */
     AD1CON1bits.ADON = 1;    /* enable ADC module */
+    DELAY_milliseconds(1);   /* allow module to stabilise before first sample */
 }
 
-/* Blocking single-shot read; takes < 20 µs at 4 MHz FCY. */
+/* Single-shot read with timeout so a misconfigured ADC never hangs the loop. */
 static uint16_t adc_read_pot(void)
 {
+    uint16_t timeout = 50000u;
     AD1CON1bits.SAMP = 1;    /* start sampling */
     __builtin_nop(); __builtin_nop(); __builtin_nop();
     __builtin_nop(); __builtin_nop(); __builtin_nop();  /* ~1.5 µs settle */
     AD1CON1bits.SAMP = 0;    /* end sample → conversion begins */
-    while (!AD1CON1bits.DONE);
+    while (!AD1CON1bits.DONE && --timeout);
     AD1CON1bits.DONE = 0;
     return (uint16_t)ADC1BUF0;
 }
@@ -382,10 +382,9 @@ static void alarm_check(void)
 
 static void alarm_stop(void)
 {
-    g_al_ringing     = false;
-    g_al_secs        = 0;
-    g_mode           = MODE_CLOCK;
-    g_clock_force_full = true;
+    g_al_ringing = false;
+    g_al_secs    = 0;
+    g_mode       = MODE_CLOCK;
     oledC_setBackground(COL_BG);
 }
 
@@ -482,90 +481,34 @@ static void draw_corner_clock(void)
 /* ═══════════════════════════════════════════════════════════════════════════
  * DIGITAL CLOCK RENDERER
  * ═══════════════════════════════════════════════════════════════════════════ */
-/* Partial-update digital clock.
- *
- * Layout (scale 2 → each char 12 × 16 px), time row at y = 30:
- *   HH  x =  0..23   (erase rect  0,30..23,45)
- *   :   x = 24..35   (static, never erased)
- *   MM  x = 36..59   (erase rect 36,30..59,45)
- *   :   x = 60..71   (static, never erased)
- *   SS  x = 72..95   (erase rect 72,30..95,45)
- *
- * On first call or after returning from menu / alarm (g_clock_force_full):
- *   full clear → draw static elements → draw all three fields.
- * On every subsequent call:
- *   only erase+redraw the field(s) whose value changed.
- */
 static void render_digital(void)
 {
-    static uint8_t prev_h   = 0xFFu;   /* 0xFF = "never drawn" sentinel */
-    static uint8_t prev_m   = 0xFFu;
-    static uint8_t prev_s   = 0xFFu;
-    static bool    prev_pm  = false;
-    static bool    prev_al  = false;
-
+    char    time_buf[10];
+    char    date_buf[8];
     uint8_t h  = g_hour;
     bool    pm = false;
+
     if (g_fmt == FMT_12H) {
         pm = (h >= 12u);
         h  =  h % 12u;
         if (h == 0u) h = 12u;
     }
 
-    if (g_clock_force_full) {
-        g_clock_force_full = false;
-        /* ── Full clear + static elements ── */
-        oledC_clearScreen();
-        /* Colons (never change) */
-        oledC_DrawString(24u, 30u, 2u, 2u, (uint8_t *)":", COL_TIME);
-        oledC_DrawString(60u, 30u, 2u, 2u, (uint8_t *)":", COL_TIME);
-        /* Date */
-        char date_buf[8];
-        snprintf(date_buf, sizeof(date_buf), "%02u/%02u", g_day, g_month);
-        oledC_DrawString(4u, 76u, 1u, 1u, (uint8_t *)date_buf, COL_DATE);
-        /* Alarm icon */
-        if (g_al_enabled) draw_alarm_icon(84u, 4u);
-        prev_al = g_al_enabled;
-        /* AM/PM */
-        if (g_fmt == FMT_12H)
-            oledC_DrawString(72u, 52u, 1u, 1u, (uint8_t *)(pm ? "PM" : "AM"), COL_TEXT);
-        prev_pm = pm;
-        /* Force all three digit fields to redraw below */
-        prev_h = 0xFFu;  prev_m = 0xFFu;  prev_s = 0xFFu;
-    }
+    /* ── Large HH:MM:SS ── */
+    snprintf(time_buf, sizeof(time_buf), "%02u:%02u:%02u", h, g_min, g_sec);
+    oledC_DrawString(0u, 30u, 2u, 2u, (uint8_t *)time_buf, COL_TIME);
 
-    /* ── Partial updates: only erase+redraw what changed ── */
-    char buf[4];
-
-    if (h != prev_h) {
-        snprintf(buf, sizeof(buf), "%02u", h);
-        oledC_DrawRectangle(0u, 30u, 23u, 45u, COL_BG);
-        oledC_DrawString(0u, 30u, 2u, 2u, (uint8_t *)buf, COL_TIME);
-        prev_h = h;
-    }
-    if (g_min != prev_m) {
-        snprintf(buf, sizeof(buf), "%02u", g_min);
-        oledC_DrawRectangle(36u, 30u, 59u, 45u, COL_BG);
-        oledC_DrawString(36u, 30u, 2u, 2u, (uint8_t *)buf, COL_TIME);
-        prev_m = g_min;
-    }
-    if (g_sec != prev_s) {
-        snprintf(buf, sizeof(buf), "%02u", g_sec);
-        oledC_DrawRectangle(72u, 30u, 95u, 45u, COL_BG);
-        oledC_DrawString(72u, 30u, 2u, 2u, (uint8_t *)buf, COL_TIME);
-        prev_s = g_sec;
-    }
-    /* AM/PM: update only when it flips */
-    if (g_fmt == FMT_12H && pm != prev_pm) {
+    /* AM/PM label (12h mode only) */
+    if (g_fmt == FMT_12H)
         oledC_DrawString(72u, 52u, 1u, 1u, (uint8_t *)(pm ? "PM" : "AM"), COL_TEXT);
-        prev_pm = pm;
-    }
-    /* Alarm icon: update only when enabled state changes */
-    if (g_al_enabled != prev_al) {
-        if (g_al_enabled) draw_alarm_icon(84u, 4u);
-        else oledC_DrawRectangle(84u, 4u, 95u, 15u, COL_BG);
-        prev_al = g_al_enabled;
-    }
+
+    /* ── Date: DD/MM ── */
+    snprintf(date_buf, sizeof(date_buf), "%02u/%02u", g_day, g_month);
+    oledC_DrawString(4u, 76u, 1u, 1u, (uint8_t *)date_buf, COL_DATE);
+
+    /* ── Alarm icon top-right ── */
+    if (g_al_enabled)
+        draw_alarm_icon(84u, 4u);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -610,18 +553,12 @@ static void render_analog(void)
     }
 }
 
-/* Top-level dispatcher.
- * Digital: render_digital() owns clearing (partial-update logic inside).
- * Analog : still does a full clear each tick (hands move every second). */
 static void render_clock(void)
 {
     oledC_setBackground(COL_BG);
-    if (g_disp == DISP_DIGITAL) {
-        render_digital();
-    } else {
-        oledC_clearScreen();
-        render_analog();
-    }
+    oledC_clearScreen();
+    if (g_disp == DISP_DIGITAL) render_digital();
+    else                        render_analog();
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -878,10 +815,9 @@ static void menu_enter_state(MenuSt st)
 /* Leave menu entirely → return to clock */
 static void menu_exit(void)
 {
-    g_mode           = MODE_CLOCK;
-    g_menu_st        = MENU_MAIN;
-    g_menu_cur       = 0u;
-    g_clock_force_full = true;
+    g_mode     = MODE_CLOCK;
+    g_menu_st  = MENU_MAIN;
+    g_menu_cur = 0u;
 }
 
 /*
