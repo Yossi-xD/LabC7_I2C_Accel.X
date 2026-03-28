@@ -100,6 +100,11 @@
 #define H_MIN   28u         /* minute hand length */
 #define H_HOUR  18u         /* hour hand length */
 
+/* Hand half-widths: draws 2*half_w+1 parallel lines per hand */
+#define HAND_W_SEC   0u     /* 1 px  – thinnest */
+#define HAND_W_MIN   1u     /* 3 px  – medium   */
+#define HAND_W_HOUR  2u     /* 5 px  – thickest */
+
 /* Colour palette used by the app */
 #define COL_BG          OLEDC_COLOR_BLACK
 #define COL_TEXT        OLEDC_COLOR_WHITE
@@ -249,7 +254,7 @@ static bool    accel_flipped(void);
 
 /* Display helpers */
 static void draw_line_any(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, uint16_t color);
-static void draw_hand(uint8_t cx, uint8_t cy, uint8_t len, float angle_rad, uint16_t color);
+static void draw_hand(uint8_t cx, uint8_t cy, uint8_t len, float angle_rad, uint16_t color, uint8_t half_w);
 static void draw_alarm_icon(uint8_t x, uint8_t y);
 static void draw_corner_clock(void);
 static void draw_analog_ticks(void);
@@ -487,16 +492,33 @@ static void draw_line_any(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, uint16
 /*
  * Draw a clock hand of length `len` from (cx,cy).
  * angle_rad = radians clockwise from 12 o'clock position.
+ * half_w controls thickness: draws 2*half_w+1 parallel lines offset in the
+ * perpendicular direction (cos θ, sin θ) so the hand looks wider.
  */
-static void draw_hand(uint8_t cx, uint8_t cy, uint8_t len, float angle_rad, uint16_t color)
+static void draw_hand(uint8_t cx, uint8_t cy, uint8_t len, float angle_rad, uint16_t color, uint8_t half_w)
 {
-    int16_t ex = (int16_t)((float)cx + (float)len * sinf(angle_rad));
-    int16_t ey = (int16_t)((float)cy - (float)len * cosf(angle_rad));
-    if (ex < 0)   ex = 0;
-    if (ey < 0)   ey = 0;
-    if (ex > 95)  ex = 95;
-    if (ey > 95)  ey = 95;
-    draw_line_any(cx, cy, (uint8_t)ex, (uint8_t)ey, color);
+    /* Tip of the hand */
+    int16_t ex = (int16_t)roundf((float)cx + (float)len * sinf(angle_rad));
+    int16_t ey = (int16_t)roundf((float)cy - (float)len * cosf(angle_rad));
+    if (ex < 0) ex = 0;  if (ey < 0) ey = 0;
+    if (ex > 95) ex = 95; if (ey > 95) ey = 95;
+
+    /* Perpendicular direction (rounded to nearest pixel) */
+    int16_t dpx = (int16_t)roundf(cosf(angle_rad));
+    int16_t dpy = (int16_t)roundf(sinf(angle_rad));
+
+    int8_t d;
+    for (d = -(int8_t)half_w; d <= (int8_t)half_w; d++) {
+        int16_t ox0 = (int16_t)cx + (int16_t)d * dpx;
+        int16_t oy0 = (int16_t)cy + (int16_t)d * dpy;
+        int16_t ox1 = ex           + (int16_t)d * dpx;
+        int16_t oy1 = ey           + (int16_t)d * dpy;
+        if (ox0 < 0) ox0 = 0;  if (oy0 < 0) oy0 = 0;
+        if (ox0 > 95) ox0 = 95; if (oy0 > 95) oy0 = 95;
+        if (ox1 < 0) ox1 = 0;  if (oy1 < 0) oy1 = 0;
+        if (ox1 > 95) ox1 = 95; if (oy1 > 95) oy1 = 95;
+        draw_line_any((uint8_t)ox0, (uint8_t)oy0, (uint8_t)ox1, (uint8_t)oy1, color);
+    }
 }
 
 /*
@@ -550,10 +572,12 @@ static void render_digital(void)
         if (h == 0u) h = 12u;
     }
 
-    /* ── Small watch icon: outline circle + two hands, top-left ── */
-    oledC_DrawCircle(6u, 6u, 5u, COL_TEXT);        /* face ring           */
-    draw_line_any(6u, 6u, 6u, 2u, COL_TEXT);       /* minute hand → 12   */
-    draw_line_any(6u, 6u, 9u, 6u, COL_TEXT);       /* hour hand   → 3    */
+    /* ── Small clock icon top-left — only when alarm is active ── */
+    if (g_al_enabled) {
+        oledC_DrawCircle(6u, 6u, 5u, COL_TEXT);
+        draw_line_any(6u, 6u, 6u, 2u, COL_TEXT);   /* minute hand → 12 */
+        draw_line_any(6u, 6u, 9u, 6u, COL_TEXT);   /* hour hand   → 3  */
+    }
 
     /* ── Large centred HH:MM:SS ──
      * sx=2: each char advances 5*2+1 = 11 px; 8 chars × 11 = 88 px total.
@@ -561,18 +585,13 @@ static void render_digital(void)
     snprintf(time_buf, sizeof(time_buf), "%02u:%02u:%02u", h, g_min, g_sec);
     oledC_DrawString(4u, 34u, 2u, 2u, (uint8_t *)time_buf, COL_TEXT);
 
-    /* ── am / pm  bottom-left (12h mode only) ── */
-    if (g_fmt == FMT_12H)
-        oledC_DrawString(2u, 86u, 1u, 1u,
-                         (uint8_t *)(pm ? "pm" : "am"), COL_TEXT);
+    /* ── am / pm  bottom-left (always shown, based on current hour) ── */
+    oledC_DrawString(2u, 86u, 1u, 1u,
+                     (uint8_t *)((g_hour >= 12u) ? "pm" : "am"), COL_TEXT);
 
     /* ── Date DD/MM  bottom-right ── */
     snprintf(date_buf, sizeof(date_buf), "%02u/%02u", g_day, g_month);
     oledC_DrawString(58u, 86u, 1u, 1u, (uint8_t *)date_buf, COL_TEXT);
-
-    /* ── Alarm icon top-right (only when alarm is set) ── */
-    if (g_al_enabled)
-        draw_alarm_icon(84u, 4u);
 }
 
 /* ── Shared helper: draw all 12 hour tick marks ── */
@@ -601,21 +620,27 @@ static void render_analog(void)
 
     draw_analog_ticks();
 
-    /* ── Hands (all white) ── */
+    /* ── Small clock icon top-left — only when alarm is active ── */
+    if (g_al_enabled) {
+        oledC_DrawCircle(6u, 6u, 5u, COL_TEXT);
+        draw_line_any(6u, 6u, 6u, 2u, COL_TEXT);   /* minute hand → 12 */
+        draw_line_any(6u, 6u, 9u, 6u, COL_TEXT);   /* hour hand   → 3  */
+    }
+
+    /* ── Hands: hour=thick, minute=medium, second=thin ── */
     float sec_a  = TWO_PI * (float)g_sec  / 60.0f;
     float min_a  = TWO_PI * ((float)g_min  + (float)g_sec  / 60.0f) / 60.0f;
     float hval   = (float)(g_hour % 12u)  + (float)g_min  / 60.0f;
     float hour_a = TWO_PI * hval / 12.0f;
 
-    draw_hand(CLK_CX, CLK_CY, H_HOUR, hour_a, COL_TEXT);
-    draw_hand(CLK_CX, CLK_CY, H_MIN,  min_a,  COL_TEXT);
-    draw_hand(CLK_CX, CLK_CY, H_SEC,  sec_a,  COL_TEXT);
+    draw_hand(CLK_CX, CLK_CY, H_HOUR, hour_a, COL_TEXT, HAND_W_HOUR);
+    draw_hand(CLK_CX, CLK_CY, H_MIN,  min_a,  COL_TEXT, HAND_W_MIN);
+    draw_hand(CLK_CX, CLK_CY, H_SEC,  sec_a,  COL_TEXT, HAND_W_SEC);
     oledC_DrawThickPoint(CLK_CX, CLK_CY, 2u, COL_TEXT);
 
-    /* am/pm bottom-left (12h mode only) */
-    if (g_fmt == FMT_12H)
-        oledC_DrawString(2u, 86u, 1u, 1u,
-                         (uint8_t *)((g_hour >= 12u) ? "pm" : "am"), COL_TEXT);
+    /* am/pm bottom-left (always shown) */
+    oledC_DrawString(2u, 86u, 1u, 1u,
+                     (uint8_t *)((g_hour >= 12u) ? "pm" : "am"), COL_TEXT);
 
     /* Date DD/MM bottom-right */
     {
@@ -623,9 +648,6 @@ static void render_analog(void)
         snprintf(dline, sizeof(dline), "%02u/%02u", g_day, g_month);
         oledC_DrawString(58u, 86u, 1u, 1u, (uint8_t *)dline, COL_TEXT);
     }
-
-    if (g_al_enabled)
-        draw_alarm_icon(84u, 4u);
 
     /* Store drawn state so render_analog_update() can erase these hands */
     s_hand_sec  = g_sec;
@@ -641,19 +663,19 @@ static void render_analog_update(void)
 {
     const float TWO_PI = 6.283185f;
 
-    /* Erase previously drawn hands by painting them in the background colour */
+    /* Erase previously drawn hands (same widths so all pixels are covered) */
     if (s_hand_sec != 0xFFu) {
         float old_sec_a  = TWO_PI * (float)s_hand_sec / 60.0f;
         float old_min_a  = TWO_PI * ((float)s_hand_min  + (float)s_hand_sec / 60.0f) / 60.0f;
         float old_hval   = (float)(s_hand_hour % 12u)   + (float)s_hand_min  / 60.0f;
         float old_hour_a = TWO_PI * old_hval / 12.0f;
-        draw_hand(CLK_CX, CLK_CY, H_HOUR, old_hour_a, COL_BG);
-        draw_hand(CLK_CX, CLK_CY, H_MIN,  old_min_a,  COL_BG);
-        draw_hand(CLK_CX, CLK_CY, H_SEC,  old_sec_a,  COL_BG);
+        draw_hand(CLK_CX, CLK_CY, H_HOUR, old_hour_a, COL_BG, HAND_W_HOUR);
+        draw_hand(CLK_CX, CLK_CY, H_MIN,  old_min_a,  COL_BG, HAND_W_MIN);
+        draw_hand(CLK_CX, CLK_CY, H_SEC,  old_sec_a,  COL_BG, HAND_W_SEC);
         oledC_DrawThickPoint(CLK_CX, CLK_CY, 2u, COL_BG);
     }
 
-    /* Restore any tick marks that were erased by the hands above */
+    /* Restore any tick marks erased by the hands above */
     draw_analog_ticks();
 
     /* Draw new hands */
@@ -661,9 +683,9 @@ static void render_analog_update(void)
     float min_a  = TWO_PI * ((float)g_min  + (float)g_sec  / 60.0f) / 60.0f;
     float hval   = (float)(g_hour % 12u)  + (float)g_min  / 60.0f;
     float hour_a = TWO_PI * hval / 12.0f;
-    draw_hand(CLK_CX, CLK_CY, H_HOUR, hour_a, COL_TEXT);
-    draw_hand(CLK_CX, CLK_CY, H_MIN,  min_a,  COL_TEXT);
-    draw_hand(CLK_CX, CLK_CY, H_SEC,  sec_a,  COL_TEXT);
+    draw_hand(CLK_CX, CLK_CY, H_HOUR, hour_a, COL_TEXT, HAND_W_HOUR);
+    draw_hand(CLK_CX, CLK_CY, H_MIN,  min_a,  COL_TEXT, HAND_W_MIN);
+    draw_hand(CLK_CX, CLK_CY, H_SEC,  sec_a,  COL_TEXT, HAND_W_SEC);
     oledC_DrawThickPoint(CLK_CX, CLK_CY, 2u, COL_TEXT);
 
     s_hand_sec  = g_sec;
@@ -740,25 +762,25 @@ static void render_menu(void)
 
     /* ─── DISPLAY MODE ─── */
     case MENU_DISP_MODE:
-        oledC_DrawString(0u, 12u, 1u, 1u, (uint8_t *)"Display Mode:", COL_MENU_HDR);
+        oledC_DrawString(0u, 12u, 1u, 1u, (uint8_t *)"Display Mode:", COL_TEXT);
         oledC_DrawString(4u, 30u, 1u, 1u,
             (uint8_t *)((g_edit_val == 0u) ? "[Digital]" : " Digital "),
-            (g_edit_val == 0u) ? COL_MENU_SEL : COL_MENU_ITEM);
+            (g_edit_val == 0u) ? COL_TEXT : COL_FACE);
         oledC_DrawString(4u, 44u, 1u, 1u,
             (uint8_t *)((g_edit_val == 1u) ? "[Analog] " : " Analog  "),
-            (g_edit_val == 1u) ? COL_MENU_SEL : COL_MENU_ITEM);
+            (g_edit_val == 1u) ? COL_TEXT : COL_FACE);
         oledC_DrawString(0u, 82u, 1u, 1u, (uint8_t *)"S1:toggle S2:set", COL_FACE);
         break;
 
     /* ─── TIME FORMAT ─── */
     case MENU_TIME_FMT:
-        oledC_DrawString(0u, 12u, 1u, 1u, (uint8_t *)"Time Format:", COL_MENU_HDR);
+        oledC_DrawString(0u, 12u, 1u, 1u, (uint8_t *)"Time Format:", COL_TEXT);
         oledC_DrawString(4u, 30u, 1u, 1u,
             (uint8_t *)((g_edit_val == 0u) ? "[24h]" : " 24h "),
-            (g_edit_val == 0u) ? COL_MENU_SEL : COL_MENU_ITEM);
+            (g_edit_val == 0u) ? COL_TEXT : COL_FACE);
         oledC_DrawString(4u, 44u, 1u, 1u,
             (uint8_t *)((g_edit_val == 1u) ? "[12h]" : " 12h "),
-            (g_edit_val == 1u) ? COL_MENU_SEL : COL_MENU_ITEM);
+            (g_edit_val == 1u) ? COL_TEXT : COL_FACE);
         oledC_DrawString(0u, 82u, 1u, 1u, (uint8_t *)"S1:toggle S2:set", COL_FACE);
         break;
 
@@ -779,7 +801,7 @@ static void render_menu(void)
         snprintf(fs, sizeof(fs), "%02u", sv);
 
         /* Title */
-        oledC_DrawString(20u, 14u, 1u, 1u, (uint8_t *)"SET TIME", COL_MENU_HDR);
+        oledC_DrawString(20u, 14u, 1u, 1u, (uint8_t *)"SET TIME", COL_TEXT);
 
         /* Up arrow  (tip points up at y=30, shaft to y=42) */
         oledC_DrawLine(5u, 30u, 1u, 35u, 1u, COL_TEXT);
@@ -828,7 +850,7 @@ static void render_menu(void)
         snprintf(fd, sizeof(fd), "%02u", dv);
         snprintf(fm, sizeof(fm), "%02u", mv);
 
-        oledC_DrawString(20u, 14u, 1u, 1u, (uint8_t *)"SET DATE", COL_MENU_HDR);
+        oledC_DrawString(20u, 14u, 1u, 1u, (uint8_t *)"SET DATE", COL_TEXT);
 
         /* Up / down arrows */
         oledC_DrawLine(5u, 30u, 1u, 35u, 1u, COL_TEXT);
@@ -871,15 +893,15 @@ static void render_menu(void)
         snprintf(fh, sizeof(fh), "%02u", hv);
         snprintf(fm, sizeof(fm), "%02u", mv);
 
-        oledC_DrawString(16u, 14u, 1u, 1u, (uint8_t *)"SET ALARM", COL_MENU_HDR);
+        oledC_DrawString(16u, 14u, 1u, 1u, (uint8_t *)"SET ALARM", COL_TEXT);
 
         /* Up / down arrows */
-        oledC_DrawLine(5u, 30u, 1u, 35u, 1u, COL_ALARM_ICON);
-        oledC_DrawLine(5u, 30u, 9u, 35u, 1u, COL_ALARM_ICON);
-        oledC_DrawLine(5u, 30u, 5u, 42u, 1u, COL_ALARM_ICON);
-        oledC_DrawLine(5u, 68u, 1u, 63u, 1u, COL_ALARM_ICON);
-        oledC_DrawLine(5u, 68u, 9u, 63u, 1u, COL_ALARM_ICON);
-        oledC_DrawLine(5u, 56u, 5u, 68u, 1u, COL_ALARM_ICON);
+        oledC_DrawLine(5u, 30u, 1u, 35u, 1u, COL_TEXT);
+        oledC_DrawLine(5u, 30u, 9u, 35u, 1u, COL_TEXT);
+        oledC_DrawLine(5u, 30u, 5u, 42u, 1u, COL_TEXT);
+        oledC_DrawLine(5u, 68u, 1u, 63u, 1u, COL_TEXT);
+        oledC_DrawLine(5u, 68u, 9u, 63u, 1u, COL_TEXT);
+        oledC_DrawLine(5u, 56u, 5u, 68u, 1u, COL_TEXT);
 
         static const uint8_t afx[2] = { 20u, 56u };
         const uint8_t afy = 44u;
@@ -892,10 +914,10 @@ static void render_menu(void)
         {
             uint8_t bx0 = afx[active] - 2u,  bx1 = afx[active] + 24u;
             uint8_t by0 = afy - 2u,           by1 = afy + 16u;
-            oledC_DrawLine(bx0, by0, bx1, by0, 1u, COL_ALARM_ICON);
-            oledC_DrawLine(bx0, by1, bx1, by1, 1u, COL_ALARM_ICON);
-            oledC_DrawLine(bx0, by0, bx0, by1, 1u, COL_ALARM_ICON);
-            oledC_DrawLine(bx1, by0, bx1, by1, 1u, COL_ALARM_ICON);
+            oledC_DrawLine(bx0, by0, bx1, by0, 1u, COL_TEXT);
+            oledC_DrawLine(bx0, by1, bx1, by1, 1u, COL_TEXT);
+            oledC_DrawLine(bx0, by0, bx0, by1, 1u, COL_TEXT);
+            oledC_DrawLine(bx1, by0, bx1, by1, 1u, COL_TEXT);
         }
 
         oledC_DrawString(4u, 82u, 1u, 1u, (uint8_t *)"S1:+1  S2:next", COL_FACE);
@@ -904,9 +926,9 @@ static void render_menu(void)
 
     /* ─── DISABLE ALARM ─── */
     case MENU_ALARM_OFF:
-        oledC_DrawString(0u, 20u, 1u, 1u, (uint8_t *)"Disable Alarm?", COL_ALARM_ICON);
-        oledC_DrawString(0u, 44u, 1u, 1u, (uint8_t *)"S2: Yes",        COL_MENU_SEL);
-        oledC_DrawString(0u, 58u, 1u, 1u, (uint8_t *)"S1: No / back",  COL_MENU_ITEM);
+        oledC_DrawString(0u, 20u, 1u, 1u, (uint8_t *)"Disable Alarm?", COL_TEXT);
+        oledC_DrawString(0u, 44u, 1u, 1u, (uint8_t *)"S2: Yes",        COL_TEXT);
+        oledC_DrawString(0u, 58u, 1u, 1u, (uint8_t *)"S1: No / back",  COL_FACE);
         break;
 
     default: break;
