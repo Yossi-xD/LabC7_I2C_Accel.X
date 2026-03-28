@@ -121,9 +121,8 @@
  * TIMING / DETECTION CONSTANTS
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Loop runs at ~10 ms base, but OLED render (~600 ms once/sec) inflates each
- * second to ~700 ms effective. Use 100 loops ≈ 1.6-2 s actual hold time. */
-#define LONG_PRESS_LOOPS    100u
+/* Long-press duration in seconds (exact, ISR-timed) */
+#define LONG_PRESS_SECS     2u
 
 /* Shake: squared magnitude of Δaccel vector must exceed this */
 #define SHAKE_MAG_SQ        640000L     /* threshold ≈ 800 raw units */
@@ -215,8 +214,9 @@ static uint8_t  g_menu_cur = 0;        /* cursor row in main menu */
 static uint8_t  g_edit_val = 0;        /* scratch register for value editing */
 
 /* ISR-owned flags (volatile prevents compiler from caching them) */
-volatile bool g_tick        = false;   /* set every second by TMR1 ISR       */
-volatile bool g_blink_state = false;   /* toggled every second for alarm blink */
+volatile bool     g_tick        = false;   /* set every second by TMR1 ISR       */
+volatile bool     g_blink_state = false;   /* toggled every second for alarm blink */
+volatile uint16_t g_uptime_secs = 0u;      /* free-running seconds counter         */
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * FORWARD DECLARATIONS
@@ -266,6 +266,7 @@ void __attribute__((interrupt, no_auto_psv)) _T1Interrupt(void)
 {
     g_tick        = true;
     g_blink_state = !g_blink_state;
+    g_uptime_secs++;
     IFS0bits.T1IF = 0;              /* clear interrupt flag */
 }
 
@@ -830,8 +831,9 @@ int main(void)
     bool s1_prev = false;
     bool s2_prev = false;
 
-    /* ── Long-press counter for S1 ── */
-    uint16_t s1_hold = 0u;
+    /* ── Long-press tracking for S1 (time-based, not iteration-based) ── */
+    uint16_t s1_press_start = 0u;   /* g_uptime_secs snapshot when S1 went down */
+    bool     s1_long_fired  = false; /* prevent re-firing while held */
 
     /* ── Redraw flag: set whenever state changes ── */
     bool need_draw = true;
@@ -860,19 +862,25 @@ int main(void)
         bool s1 = S1_PRESSED();
         bool s2 = S2_PRESSED();
 
-        bool s1_rising = ( s1 && !s1_prev);
-        bool s2_rising = ( s2 && !s2_prev);
+        bool s1_rising = (s1 && !s1_prev);
+        bool s2_rising = (s2 && !s2_prev);
 
-        /* Long-press counter: increments each loop while S1 is held */
-        if (s1) {
-            if (s1_hold < 0xFFFFu) s1_hold++;
-        } else {
-            s1_hold = 0u;
+        /* Long-press: exactly LONG_PRESS_SECS seconds, ISR-timed.
+         * Record the second-count when S1 first goes down; fire once when
+         * the elapsed seconds reach the threshold; reset on release. */
+        if (s1_rising) {
+            s1_press_start = g_uptime_secs;
+            s1_long_fired  = false;
+        } else if (!s1) {
+            s1_long_fired = false;
         }
-        /* Fires exactly once at the 2-second mark; reset immediately so it
-         * cannot carry over if the mode changes before the handler runs */
-        bool s1_long = (s1_hold == LONG_PRESS_LOOPS);
-        if (s1_long) s1_hold = 0u;
+        bool s1_long = false;
+        if (s1 && !s1_long_fired &&
+            (g_uptime_secs - s1_press_start) >= LONG_PRESS_SECS)
+        {
+            s1_long       = true;
+            s1_long_fired = true;
+        }
 
         /* ── 3. READ ACCELEROMETER ────────────────────────────────────── */
         bool shaken  = accel_shaken();
