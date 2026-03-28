@@ -123,6 +123,8 @@ void i2c1_driver_sendNACK(void)
 {
     I2C1CONLbits.ACKDT = 1;
     I2C1CONLbits.ACKEN = 1; // start the ACK/NACK
+    while (I2C1CONLbits.ACKEN)
+        ;
 }
 
 
