@@ -248,6 +248,7 @@ static bool    accel_shaken(void);
 static bool    accel_flipped(void);
 
 /* Display helpers */
+static void draw_line_any(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, uint16_t color);
 static void draw_hand(uint8_t cx, uint8_t cy, uint8_t len, float angle_rad, uint16_t color);
 static void draw_alarm_icon(uint8_t x, uint8_t y);
 static void draw_corner_clock(void);
@@ -445,14 +446,57 @@ static bool accel_flipped(void)
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /*
+ * oledC_DrawLine only iterates for x0 < x1 and only handles slope ≤ 1.
+ * This replacement handles all 8 octants using standard Bresenham.
+ */
+static void draw_line_any(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, uint16_t color)
+{
+    int16_t dx  = (int16_t)x1 - (int16_t)x0;
+    int16_t dy  = (int16_t)y1 - (int16_t)y0;
+    int16_t adx = (dx < 0) ? -dx : dx;
+    int16_t ady = (dy < 0) ? -dy : dy;
+    int16_t sx  = (dx >= 0) ? 1 : -1;
+    int16_t sy  = (dy >= 0) ? 1 : -1;
+    int16_t x   = (int16_t)x0;
+    int16_t y   = (int16_t)y0;
+    int16_t err;
+
+    if (adx >= ady) {
+        err = adx >> 1;
+        while (x != (int16_t)x1) {
+            if (x >= 0 && x <= 95 && y >= 0 && y <= 95)
+                oledC_DrawPoint((uint8_t)x, (uint8_t)y, color);
+            err -= ady;
+            if (err < 0) { y += sy; err += adx; }
+            x += sx;
+        }
+    } else {
+        err = ady >> 1;
+        while (y != (int16_t)y1) {
+            if (x >= 0 && x <= 95 && y >= 0 && y <= 95)
+                oledC_DrawPoint((uint8_t)x, (uint8_t)y, color);
+            err -= adx;
+            if (err < 0) { x += sx; err += ady; }
+            y += sy;
+        }
+    }
+    if (x1 <= 95u && y1 <= 95u)
+        oledC_DrawPoint(x1, y1, color);   /* endpoint */
+}
+
+/*
  * Draw a clock hand of length `len` from (cx,cy).
  * angle_rad = radians clockwise from 12 o'clock position.
  */
 static void draw_hand(uint8_t cx, uint8_t cy, uint8_t len, float angle_rad, uint16_t color)
 {
-    int8_t ex = (int8_t)((float)cx + (float)len * sinf(angle_rad));
-    int8_t ey = (int8_t)((float)cy - (float)len * cosf(angle_rad));
-    oledC_DrawLine(cx, cy, (uint8_t)ex, (uint8_t)ey, 1, color);
+    int16_t ex = (int16_t)((float)cx + (float)len * sinf(angle_rad));
+    int16_t ey = (int16_t)((float)cy - (float)len * cosf(angle_rad));
+    if (ex < 0)   ex = 0;
+    if (ey < 0)   ey = 0;
+    if (ex > 95)  ex = 95;
+    if (ey > 95)  ey = 95;
+    draw_line_any(cx, cy, (uint8_t)ex, (uint8_t)ey, color);
 }
 
 /*
@@ -534,7 +578,7 @@ static void draw_analog_ticks(void)
         uint8_t oy = (uint8_t)((float)CLK_CY - (float)CLK_R        * ca);
         uint8_t ix = (uint8_t)((float)CLK_CX + (float)(CLK_R - 6u) * sa);
         uint8_t iy = (uint8_t)((float)CLK_CY - (float)(CLK_R - 6u) * ca);
-        oledC_DrawLine(ix, iy, ox, oy, 1u, COL_TEXT);
+        draw_line_any(ix, iy, ox, oy, COL_TEXT);
     }
 }
 
