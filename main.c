@@ -63,14 +63,14 @@
 #define LED2_OFF()      (LED2_LAT = 0)
 
 /* Buttons – input, active LOW, internal CN pull-up enabled */
-#define S1_TRIS         TRISCbits.TRISC9
-#define S1_CNPU         CNPUCbits.CNPUC9
-#define S1_PIN          PORTCbits.RC9
+#define S1_TRIS         TRISAbits.TRISA11
+#define S1_CNPU         CNPUAbits.CNPUA11
+#define S1_PIN          PORTAbits.RA11
 #define S1_PRESSED()    (S1_PIN == 0)
 
-#define S2_TRIS         TRISCbits.TRISC5
-#define S2_CNPU         CNPUCbits.CNPUC5
-#define S2_PIN          PORTCbits.RC5
+#define S2_TRIS         TRISAbits.TRISA12
+#define S2_CNPU         CNPUAbits.CNPUA12
+#define S2_PIN          PORTAbits.RA12
 #define S2_PRESSED()    (S2_PIN == 0)
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -121,8 +121,9 @@
  * TIMING / DETECTION CONSTANTS
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Loop runs at ~10 ms  →  200 loops = 2 seconds for long-press */
-#define LONG_PRESS_LOOPS    200u
+/* Loop runs at ~10 ms base, but OLED render (~600 ms once/sec) inflates each
+ * second to ~700 ms effective. Use 100 loops ≈ 1.6-2 s actual hold time. */
+#define LONG_PRESS_LOOPS    100u
 
 /* Shake: squared magnitude of Δaccel vector must exceed this */
 #define SHAKE_MAG_SQ        640000L     /* threshold ≈ 800 raw units */
@@ -818,9 +819,7 @@ int main(void)
     /* ── Hardware + peripheral init ── */
     SYSTEM_Initialize();
     hw_init();
-    oledC_setup();          /* must follow hw_init(): hw_init sets TRISC9=input
-                             * (S1 button), which undoes oledC_setup's TRISC9=output
-                             * (OLED CS) — restoring it here prevents SPI hang */
+    oledC_setup();
     oledC_setBackground(COL_BG);
     oledC_clearScreen();
     i2c1_open();
@@ -858,12 +857,7 @@ int main(void)
         }
 
         /* ── 2. READ BUTTONS ──────────────────────────────────────────── */
-        /* RC9 is shared with OLED CS (oledC_setup sets TRISC9=0, output).
-         * Briefly switch to input so the physical button can be read,
-         * then restore output so the next OLED transaction works. */
-        S1_TRIS = 1;
         bool s1 = S1_PRESSED();
-        S1_TRIS = 0;
         bool s2 = S2_PRESSED();
 
         bool s1_rising = ( s1 && !s1_prev);
