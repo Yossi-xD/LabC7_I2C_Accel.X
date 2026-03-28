@@ -513,44 +513,57 @@ static void render_digital(void)
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * ANALOG CLOCK RENDERER
+ * Look: black background, white hands, short radial dash tick marks,
+ *       am/pm bottom-left, date bottom-right.
  * ═══════════════════════════════════════════════════════════════════════════ */
 static void render_analog(void)
 {
     const float TWO_PI = 6.283185f;
     uint8_t i;
 
-    /* ── Clock face circle ── */
-    oledC_DrawCircle(CLK_CX, CLK_CY, CLK_R, COL_FACE);
-
-    /* ── Hour tick marks (12 dots just inside the rim) ── */
+    /* ── Hour tick marks: short radial dashes at the rim ── */
     for (i = 0u; i < 12u; i++) {
-        float a  = TWO_PI * (float)i / 12.0f;
-        uint8_t mx = (uint8_t)((float)CLK_CX + (float)(CLK_R - 4u) * sinf(a));
-        uint8_t my = (uint8_t)((float)CLK_CY - (float)(CLK_R - 4u) * cosf(a));
-        oledC_DrawThickPoint(mx, my, 2u, COL_TEXT);
+        float a = TWO_PI * (float)i / 12.0f;
+        float sa = sinf(a);
+        float ca = cosf(a);
+        uint8_t ox = (uint8_t)((float)CLK_CX + (float)CLK_R * sa);
+        uint8_t oy = (uint8_t)((float)CLK_CY - (float)CLK_R * ca);
+        uint8_t ix = (uint8_t)((float)CLK_CX + (float)(CLK_R - 6u) * sa);
+        uint8_t iy = (uint8_t)((float)CLK_CY - (float)(CLK_R - 6u) * ca);
+        oledC_DrawLine(ix, iy, ox, oy, 1u, COL_TEXT);
     }
 
-    /* ── Hands ── */
+    /* ── Hands (all white) ── */
     float sec_a  = TWO_PI * (float)g_sec  / 60.0f;
     float min_a  = TWO_PI * ((float)g_min  + (float)g_sec  / 60.0f) / 60.0f;
     float hval   = (float)(g_hour % 12u)  + (float)g_min  / 60.0f;
     float hour_a = TWO_PI * hval / 12.0f;
 
-    draw_hand(CLK_CX, CLK_CY, H_HOUR, hour_a, COL_HAND_HOUR);
-    draw_hand(CLK_CX, CLK_CY, H_MIN,  min_a,  COL_HAND_MIN);
-    draw_hand(CLK_CX, CLK_CY, H_SEC,  sec_a,  COL_HAND_SEC);
+    draw_hand(CLK_CX, CLK_CY, H_HOUR, hour_a, COL_TEXT);
+    draw_hand(CLK_CX, CLK_CY, H_MIN,  min_a,  COL_TEXT);
+    draw_hand(CLK_CX, CLK_CY, H_SEC,  sec_a,  COL_TEXT);
 
     /* Centre dot */
-    oledC_DrawThickPoint(CLK_CX, CLK_CY, 3u, COL_TEXT);
+    oledC_DrawThickPoint(CLK_CX, CLK_CY, 2u, COL_TEXT);
 
-    /* ── Date + alarm icon below the face ── */
-    char dline[8];
-    snprintf(dline, sizeof(dline), "%02u/%02u", g_day, g_month);
-    oledC_DrawString(32u, 88u, 1u, 1u, (uint8_t *)dline, COL_DATE);
-
-    if (g_al_enabled) {
-        draw_alarm_icon(4u, 4u);
+    /* ── am/pm bottom-left (12h mode) or nothing (24h) ── */
+    {
+        uint8_t h = g_hour;
+        bool pm = (h >= 12u);
+        if (g_fmt == FMT_12H)
+            oledC_DrawString(2u, 86u, 1u, 1u,
+                             (uint8_t *)(pm ? "pm" : "am"), COL_TEXT);
     }
+
+    /* ── Date DD/MM bottom-right ── */
+    {
+        char dline[6];
+        snprintf(dline, sizeof(dline), "%02u/%02u", g_day, g_month);
+        oledC_DrawString(58u, 86u, 1u, 1u, (uint8_t *)dline, COL_TEXT);
+    }
+
+    if (g_al_enabled)
+        draw_alarm_icon(84u, 4u);
 }
 
 static void render_clock(void)
@@ -1070,25 +1083,10 @@ int main(void)
                 break;
             }
 
-            /* ── Potentiometer: live navigation / value control ── */
+            /* ── Potentiometer: live value control (Set Time / Set Alarm only) ── */
             {
                 uint8_t nv = 0u;
                 switch (g_menu_st) {
-
-                case MENU_MAIN:
-                    /* Map full pot range to menu items */
-                    nv = (uint8_t)((uint32_t)pot * MENU_ITEM_COUNT / 1024u);
-                    if (nv >= MENU_ITEM_COUNT) nv = MENU_ITEM_COUNT - 1u;
-                    if (nv != g_menu_cur) { g_menu_cur = nv; need_draw = true; }
-                    break;
-
-                case MENU_DISP_MODE:
-                case MENU_TIME_FMT:
-                case MENU_ALARM_OFF:
-                    /* Two options: left half = 0, right half = 1 */
-                    nv = (pot >= 512u) ? 1u : 0u;
-                    if (nv != g_edit_val) { g_edit_val = nv; need_draw = true; }
-                    break;
 
                 case MENU_TIME_H:
                 case MENU_ALARM_H:
@@ -1100,19 +1098,6 @@ int main(void)
                 case MENU_TIME_S:
                 case MENU_ALARM_M:
                     nv = (uint8_t)((uint32_t)pot * 60u / 1024u);
-                    if (nv != g_edit_val) { g_edit_val = nv; need_draw = true; }
-                    break;
-
-                case MENU_DATE_D: {
-                    uint8_t days = k_days[g_month - 1u];
-                    nv = (uint8_t)(1u + (uint32_t)pot * days / 1024u);
-                    if (nv > days) nv = days;
-                    if (nv != g_edit_val) { g_edit_val = nv; need_draw = true; }
-                    break;
-                }
-                case MENU_DATE_M:
-                    nv = (uint8_t)(1u + (uint32_t)pot * 12u / 1024u);
-                    if (nv > 12u) nv = 12u;
                     if (nv != g_edit_val) { g_edit_val = nv; need_draw = true; }
                     break;
 
