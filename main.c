@@ -563,9 +563,9 @@ static void render_menu(void)
 
     /* ─── MAIN MENU ─── */
     case MENU_MAIN: {
-        oledC_DrawString(0u, 0u, 1u, 1u, (uint8_t *)"-- MENU --", COL_MENU_HDR);
+        oledC_DrawString(0u, 10u, 1u, 1u, (uint8_t *)"-- MENU --", COL_MENU_HDR);
         for (uint8_t i = 0u; i < MENU_ITEM_COUNT; i++) {
-            uint8_t y = (uint8_t)(12u + i * 13u);
+            uint8_t y = (uint8_t)(22u + i * 12u);
             if (y > 88u) break;
             uint16_t col = (i == g_menu_cur) ? COL_MENU_SEL : COL_MENU_ITEM;
             if (i == g_menu_cur) {
@@ -818,7 +818,6 @@ int main(void)
     /* ── Hardware + peripheral init ── */
     SYSTEM_Initialize();
     hw_init();
-    oledC_setup();
     oledC_setBackground(COL_BG);
     oledC_clearScreen();
     i2c1_open();
@@ -868,8 +867,10 @@ int main(void)
         } else {
             s1_hold = 0u;
         }
-        /* Fires exactly once at the 2-second mark */
+        /* Fires exactly once at the 2-second mark; reset immediately so it
+         * cannot carry over if the mode changes before the handler runs */
         bool s1_long = (s1_hold == LONG_PRESS_LOOPS);
+        if (s1_long) s1_hold = 0u;
 
         /* ── 3. READ ACCELEROMETER ────────────────────────────────────── */
         bool shaken  = accel_shaken();
@@ -882,12 +883,15 @@ int main(void)
          * CLOCK MODE
          * ============================================================ */
         case MODE_CLOCK:
+            /* LED feedback */
+            if (s1) LED1_ON(); else LED1_OFF();
+            if (s2) LED2_ON(); else LED2_OFF();
+
             /* Long-press S1  →  enter menu */
             if (s1_long) {
                 g_mode     = MODE_MENU;
                 g_menu_st  = MENU_MAIN;
                 g_menu_cur = 0u;
-                s1_hold    = 0u;    /* reset so it doesn't re-trigger */
                 need_draw  = true;
             }
             break;
@@ -925,6 +929,10 @@ int main(void)
          * ALARM MODE
          * ============================================================ */
         case MODE_ALARM:
+            /* LED feedback */
+            if (s1) LED1_ON(); else LED1_OFF();
+            if (s2) LED2_ON(); else LED2_OFF();
+
             /* Any button press, shake, or flip  →  stop alarm */
             if (s1_rising || s2_rising || shaken || flipped) {
                 alarm_stop();
