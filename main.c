@@ -218,6 +218,11 @@ volatile bool     g_tick        = false;   /* set every second by TMR1 ISR      
 volatile bool     g_blink_state = false;   /* toggled every second for alarm blink */
 volatile uint16_t g_uptime_secs = 0u;      /* free-running seconds counter         */
 
+/* Last hand positions drawn on analog face (0xFF = not yet drawn) */
+static uint8_t s_hand_sec  = 0xFFu;
+static uint8_t s_hand_min  = 0xFFu;
+static uint8_t s_hand_hour = 0xFFu;
+
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * FORWARD DECLARATIONS
@@ -246,11 +251,13 @@ static bool    accel_flipped(void);
 static void draw_hand(uint8_t cx, uint8_t cy, uint8_t len, float angle_rad, uint16_t color);
 static void draw_alarm_icon(uint8_t x, uint8_t y);
 static void draw_corner_clock(void);
+static void draw_analog_ticks(void);
 
 /* Top-level renderers */
 static void render_clock(void);
 static void render_digital(void);
 static void render_analog(void);
+static void render_analog_update(void);   /* partial: hands only, no flash */
 static void render_menu(void);
 static void render_alarm(void);
 
@@ -511,27 +518,31 @@ static void render_digital(void)
         draw_alarm_icon(84u, 4u);
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * ANALOG CLOCK RENDERER
- * Look: black background, white hands, short radial dash tick marks,
- *       am/pm bottom-left, date bottom-right.
- * ═══════════════════════════════════════════════════════════════════════════ */
-static void render_analog(void)
+/* ── Shared helper: draw all 12 hour tick marks ── */
+static void draw_analog_ticks(void)
 {
     const float TWO_PI = 6.283185f;
     uint8_t i;
-
-    /* ── Hour tick marks: short radial dashes at the rim ── */
     for (i = 0u; i < 12u; i++) {
-        float a = TWO_PI * (float)i / 12.0f;
+        float a  = TWO_PI * (float)i / 12.0f;
         float sa = sinf(a);
         float ca = cosf(a);
-        uint8_t ox = (uint8_t)((float)CLK_CX + (float)CLK_R * sa);
-        uint8_t oy = (uint8_t)((float)CLK_CY - (float)CLK_R * ca);
+        uint8_t ox = (uint8_t)((float)CLK_CX + (float)CLK_R        * sa);
+        uint8_t oy = (uint8_t)((float)CLK_CY - (float)CLK_R        * ca);
         uint8_t ix = (uint8_t)((float)CLK_CX + (float)(CLK_R - 6u) * sa);
         uint8_t iy = (uint8_t)((float)CLK_CY - (float)(CLK_R - 6u) * ca);
         oledC_DrawLine(ix, iy, ox, oy, 1u, COL_TEXT);
     }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * ANALOG CLOCK RENDERER  –  full redraw (called once on mode entry)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+static void render_analog(void)
+{
+    const float TWO_PI = 6.283185f;
+
+    draw_analog_ticks();
 
     /* ── Hands (all white) ── */
     float sec_a  = TWO_PI * (float)g_sec  / 60.0f;
@@ -542,20 +553,14 @@ static void render_analog(void)
     draw_hand(CLK_CX, CLK_CY, H_HOUR, hour_a, COL_TEXT);
     draw_hand(CLK_CX, CLK_CY, H_MIN,  min_a,  COL_TEXT);
     draw_hand(CLK_CX, CLK_CY, H_SEC,  sec_a,  COL_TEXT);
-
-    /* Centre dot */
     oledC_DrawThickPoint(CLK_CX, CLK_CY, 2u, COL_TEXT);
 
-    /* ── am/pm bottom-left (12h mode) or nothing (24h) ── */
-    {
-        uint8_t h = g_hour;
-        bool pm = (h >= 12u);
-        if (g_fmt == FMT_12H)
-            oledC_DrawString(2u, 86u, 1u, 1u,
-                             (uint8_t *)(pm ? "pm" : "am"), COL_TEXT);
-    }
+    /* am/pm bottom-left (12h mode only) */
+    if (g_fmt == FMT_12H)
+        oledC_DrawString(2u, 86u, 1u, 1u,
+                         (uint8_t *)((g_hour >= 12u) ? "pm" : "am"), COL_TEXT);
 
-    /* ── Date DD/MM bottom-right ── */
+    /* Date DD/MM bottom-right */
     {
         char dline[6];
         snprintf(dline, sizeof(dline), "%02u/%02u", g_day, g_month);
@@ -564,14 +569,62 @@ static void render_analog(void)
 
     if (g_al_enabled)
         draw_alarm_icon(84u, 4u);
+
+    /* Store drawn state so render_analog_update() can erase these hands */
+    s_hand_sec  = g_sec;
+    s_hand_min  = g_min;
+    s_hand_hour = g_hour;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * ANALOG CLOCK PARTIAL UPDATE  –  erase old hands, redraw ticks, draw new
+ * No screen clear → no flash.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+static void render_analog_update(void)
+{
+    const float TWO_PI = 6.283185f;
+
+    /* Erase previously drawn hands by painting them in the background colour */
+    if (s_hand_sec != 0xFFu) {
+        float old_sec_a  = TWO_PI * (float)s_hand_sec / 60.0f;
+        float old_min_a  = TWO_PI * ((float)s_hand_min  + (float)s_hand_sec / 60.0f) / 60.0f;
+        float old_hval   = (float)(s_hand_hour % 12u)   + (float)s_hand_min  / 60.0f;
+        float old_hour_a = TWO_PI * old_hval / 12.0f;
+        draw_hand(CLK_CX, CLK_CY, H_HOUR, old_hour_a, COL_BG);
+        draw_hand(CLK_CX, CLK_CY, H_MIN,  old_min_a,  COL_BG);
+        draw_hand(CLK_CX, CLK_CY, H_SEC,  old_sec_a,  COL_BG);
+        oledC_DrawThickPoint(CLK_CX, CLK_CY, 2u, COL_BG);
+    }
+
+    /* Restore any tick marks that were erased by the hands above */
+    draw_analog_ticks();
+
+    /* Draw new hands */
+    float sec_a  = TWO_PI * (float)g_sec  / 60.0f;
+    float min_a  = TWO_PI * ((float)g_min  + (float)g_sec  / 60.0f) / 60.0f;
+    float hval   = (float)(g_hour % 12u)  + (float)g_min  / 60.0f;
+    float hour_a = TWO_PI * hval / 12.0f;
+    draw_hand(CLK_CX, CLK_CY, H_HOUR, hour_a, COL_TEXT);
+    draw_hand(CLK_CX, CLK_CY, H_MIN,  min_a,  COL_TEXT);
+    draw_hand(CLK_CX, CLK_CY, H_SEC,  sec_a,  COL_TEXT);
+    oledC_DrawThickPoint(CLK_CX, CLK_CY, 2u, COL_TEXT);
+
+    s_hand_sec  = g_sec;
+    s_hand_min  = g_min;
+    s_hand_hour = g_hour;
 }
 
 static void render_clock(void)
 {
     oledC_setBackground(COL_BG);
     oledC_clearScreen();
-    if (g_disp == DISP_DIGITAL) render_digital();
-    else                        render_analog();
+    if (g_disp == DISP_DIGITAL) {
+        /* Invalidate stored analog state so partial update starts fresh next time */
+        s_hand_sec = 0xFFu;
+        render_digital();
+    } else {
+        render_analog();   /* stores current hand positions into s_hand_* */
+    }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1011,8 +1064,12 @@ int main(void)
                 /* Menu: just overwrite the corner clock text — no screen clear,
                  * no flicker.  Full redraw only happens on button presses. */
                 draw_corner_clock();
+            } else if (g_mode == MODE_CLOCK && g_disp == DISP_ANALOG) {
+                /* Analog clock: erase old hands, redraw ticks, draw new hands.
+                 * No screen clear → no flash. */
+                render_analog_update();
             } else {
-                need_draw = true;   /* clock / alarm screens need full redraw */
+                need_draw = true;   /* digital / alarm screens: full redraw */
             }
         }
 
