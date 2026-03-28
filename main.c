@@ -602,43 +602,124 @@ static void render_menu(void)
         oledC_DrawString(0u, 82u, 1u, 1u, (uint8_t *)"S1:toggle S2:set", COL_FACE);
         break;
 
-    /* ─── SET TIME (shared layout for H / M / S) ─── */
+    /* ─── SET TIME  (H → M → S, box highlights active field) ─── */
     case MENU_TIME_H:
     case MENU_TIME_M:
     case MENU_TIME_S: {
-        static const char * const tl[] = { "Hours","Minutes","Seconds" };
-        uint8_t idx = (uint8_t)(g_menu_st - MENU_TIME_H);
-        char vbuf[16];
-        snprintf(vbuf, sizeof(vbuf), "%s: %02u", tl[idx], g_edit_val);
-        oledC_DrawString(0u,  12u, 1u, 1u, (uint8_t *)"Set Time",  COL_MENU_HDR);
-        oledC_DrawString(4u,  44u, 2u, 2u, (uint8_t *)vbuf,        COL_TIME);
-        oledC_DrawString(0u,  82u, 1u, 1u, (uint8_t *)"S1:+1 S2:next", COL_FACE);
+        uint8_t active = (uint8_t)(g_menu_st - MENU_TIME_H);   /* 0=H 1=M 2=S */
+
+        /* Values: active field comes from g_edit_val; committed fields from globals */
+        uint8_t hv = (active == 0u) ? g_edit_val : g_hour;
+        uint8_t mv = (active == 1u) ? g_edit_val : g_min;
+        uint8_t sv = (active == 2u) ? g_edit_val : g_sec;
+
+        char fh[4], fm[4], fs[4];
+        snprintf(fh, sizeof(fh), "%02u", hv);
+        snprintf(fm, sizeof(fm), "%02u", mv);
+        snprintf(fs, sizeof(fs), "%02u", sv);
+
+        /* Title */
+        oledC_DrawString(20u, 14u, 1u, 1u, (uint8_t *)"SET TIME", COL_MENU_HDR);
+
+        /* Up arrow  (tip points up at y=30, shaft to y=42) */
+        oledC_DrawLine(5u, 30u, 1u, 35u, 1u, COL_TEXT);
+        oledC_DrawLine(5u, 30u, 9u, 35u, 1u, COL_TEXT);
+        oledC_DrawLine(5u, 30u, 5u, 42u, 1u, COL_TEXT);
+
+        /* Down arrow (tip points down at y=68, shaft from y=56) */
+        oledC_DrawLine(5u, 68u, 1u, 63u, 1u, COL_TEXT);
+        oledC_DrawLine(5u, 68u, 9u, 63u, 1u, COL_TEXT);
+        oledC_DrawLine(5u, 56u, 5u, 68u, 1u, COL_TEXT);
+
+        /* Field X anchors (scale-2 → each 2-digit field is 24 px wide) */
+        static const uint8_t fx[3] = { 12u, 40u, 68u };
+        const uint8_t fy = 44u;
+        const char * const fv[3] = { fh, fm, fs };
+
+        for (uint8_t i = 0u; i < 3u; i++) {
+            uint16_t col = (i == active) ? COL_TEXT : COL_FACE;
+            oledC_DrawString(fx[i], fy, 2u, 2u, (uint8_t *)fv[i], col);
+        }
+
+        /* White rectangle around the active field */
+        oledC_DrawRectangle(fx[active] - 2u, fy - 2u,
+                            fx[active] + 24u, fy + 16u, COL_TEXT);
+
+        oledC_DrawString(4u, 82u, 1u, 1u, (uint8_t *)"S1:+1  S2:next", COL_FACE);
         break;
     }
 
-    /* ─── SET DATE (shared layout for D / M) ─── */
+    /* ─── SET DATE  (D → M, box highlights active field) ─── */
     case MENU_DATE_D:
     case MENU_DATE_M: {
-        static const char * const dl[] = { "Day","Month" };
-        uint8_t idx = (uint8_t)(g_menu_st - MENU_DATE_D);
-        char vbuf[16];
-        snprintf(vbuf, sizeof(vbuf), "%s: %02u", dl[idx], g_edit_val);
-        oledC_DrawString(0u,  12u, 1u, 1u, (uint8_t *)"Set Date",  COL_MENU_HDR);
-        oledC_DrawString(4u,  44u, 2u, 2u, (uint8_t *)vbuf,        COL_DATE);
-        oledC_DrawString(0u,  82u, 1u, 1u, (uint8_t *)"S1:+1 S2:next", COL_FACE);
+        uint8_t active = (uint8_t)(g_menu_st - MENU_DATE_D);   /* 0=D 1=M */
+
+        uint8_t dv = (active == 0u) ? g_edit_val : g_day;
+        uint8_t mv = (active == 1u) ? g_edit_val : g_month;
+
+        char fd[4], fm[4];
+        snprintf(fd, sizeof(fd), "%02u", dv);
+        snprintf(fm, sizeof(fm), "%02u", mv);
+
+        oledC_DrawString(20u, 14u, 1u, 1u, (uint8_t *)"SET DATE", COL_MENU_HDR);
+
+        /* Up / down arrows */
+        oledC_DrawLine(5u, 30u, 1u, 35u, 1u, COL_TEXT);
+        oledC_DrawLine(5u, 30u, 9u, 35u, 1u, COL_TEXT);
+        oledC_DrawLine(5u, 30u, 5u, 42u, 1u, COL_TEXT);
+        oledC_DrawLine(5u, 68u, 1u, 63u, 1u, COL_TEXT);
+        oledC_DrawLine(5u, 68u, 9u, 63u, 1u, COL_TEXT);
+        oledC_DrawLine(5u, 56u, 5u, 68u, 1u, COL_TEXT);
+
+        static const uint8_t dfx[2] = { 20u, 56u };
+        const uint8_t dfy = 44u;
+        const char * const dfv[2] = { fd, fm };
+
+        for (uint8_t i = 0u; i < 2u; i++) {
+            uint16_t col = (i == active) ? COL_TEXT : COL_FACE;
+            oledC_DrawString(dfx[i], dfy, 2u, 2u, (uint8_t *)dfv[i], col);
+        }
+        oledC_DrawRectangle(dfx[active] - 2u, dfy - 2u,
+                            dfx[active] + 24u, dfy + 16u, COL_TEXT);
+
+        oledC_DrawString(4u, 82u, 1u, 1u, (uint8_t *)"S1:+1  S2:next", COL_FACE);
         break;
     }
 
-    /* ─── SET ALARM (shared layout for H / M) ─── */
+    /* ─── SET ALARM  (H → M, box highlights active field) ─── */
     case MENU_ALARM_H:
     case MENU_ALARM_M: {
-        static const char * const al[] = { "Hour","Minute" };
-        uint8_t idx = (uint8_t)(g_menu_st - MENU_ALARM_H);
-        char vbuf[16];
-        snprintf(vbuf, sizeof(vbuf), "%s: %02u", al[idx], g_edit_val);
-        oledC_DrawString(0u,  12u, 1u, 1u, (uint8_t *)"Set Alarm", COL_MENU_HDR);
-        oledC_DrawString(4u,  44u, 2u, 2u, (uint8_t *)vbuf,        COL_ALARM_ICON);
-        oledC_DrawString(0u,  82u, 1u, 1u, (uint8_t *)"S1:+1 S2:next", COL_FACE);
+        uint8_t active = (uint8_t)(g_menu_st - MENU_ALARM_H);  /* 0=H 1=M */
+
+        uint8_t hv = (active == 0u) ? g_edit_val : g_al_hour;
+        uint8_t mv = (active == 1u) ? g_edit_val : g_al_min;
+
+        char fh[4], fm[4];
+        snprintf(fh, sizeof(fh), "%02u", hv);
+        snprintf(fm, sizeof(fm), "%02u", mv);
+
+        oledC_DrawString(16u, 14u, 1u, 1u, (uint8_t *)"SET ALARM", COL_MENU_HDR);
+
+        /* Up / down arrows */
+        oledC_DrawLine(5u, 30u, 1u, 35u, 1u, COL_ALARM_ICON);
+        oledC_DrawLine(5u, 30u, 9u, 35u, 1u, COL_ALARM_ICON);
+        oledC_DrawLine(5u, 30u, 5u, 42u, 1u, COL_ALARM_ICON);
+        oledC_DrawLine(5u, 68u, 1u, 63u, 1u, COL_ALARM_ICON);
+        oledC_DrawLine(5u, 68u, 9u, 63u, 1u, COL_ALARM_ICON);
+        oledC_DrawLine(5u, 56u, 5u, 68u, 1u, COL_ALARM_ICON);
+
+        static const uint8_t afx[2] = { 20u, 56u };
+        const uint8_t afy = 44u;
+        const char * const afv[2] = { fh, fm };
+
+        for (uint8_t i = 0u; i < 2u; i++) {
+            uint16_t col = (i == active) ? COL_TEXT : COL_FACE;
+            oledC_DrawString(afx[i], afy, 2u, 2u, (uint8_t *)afv[i], col);
+        }
+        oledC_DrawRectangle(afx[active] - 2u, afy - 2u,
+                            afx[active] + 24u, afy + 16u, COL_ALARM_ICON);
+
+        oledC_DrawString(4u, 82u, 1u, 1u, (uint8_t *)"S1:+1  S2:next", COL_FACE);
         break;
     }
 
