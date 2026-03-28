@@ -482,6 +482,9 @@ static void draw_corner_clock(void)
         if (h == 0u) h = 12u;
     }
     snprintf(buf, sizeof(buf), "%02u:%02u:%02u", h, g_min, g_sec);
+    /* Clear the text area first so old digit pixels don't bleed through.
+     * "HH:MM:SS" = 8 chars × 6 px wide × 8 px tall at scale 1. */
+    oledC_DrawRectangle(36u, 0u, 95u, 8u, COL_BG);
     oledC_DrawString(36u, 0u, 1u, 1u, (uint8_t *)buf, COL_CORNER_CLK);
 }
 
