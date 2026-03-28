@@ -818,6 +818,9 @@ int main(void)
     /* ── Hardware + peripheral init ── */
     SYSTEM_Initialize();
     hw_init();
+    oledC_setup();          /* must follow hw_init(): hw_init sets TRISC9=input
+                             * (S1 button), which undoes oledC_setup's TRISC9=output
+                             * (OLED CS) — restoring it here prevents SPI hang */
     oledC_setBackground(COL_BG);
     oledC_clearScreen();
     i2c1_open();
