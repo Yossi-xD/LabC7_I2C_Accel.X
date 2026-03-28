@@ -218,6 +218,10 @@ volatile bool     g_tick        = false;   /* set every second by TMR1 ISR      
 volatile bool     g_blink_state = false;   /* toggled every second for alarm blink */
 volatile uint16_t g_uptime_secs = 0u;      /* free-running seconds counter         */
 
+/* Set true whenever we return to clock mode so render_digital does a full
+ * clear+redraw on its next call instead of a partial update. */
+static bool g_clock_force_full = true;
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * FORWARD DECLARATIONS
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -344,10 +348,10 @@ static void alarm_check(void)
 
 static void alarm_stop(void)
 {
-    g_al_ringing = false;
-    g_al_secs    = 0;
-    g_mode       = MODE_CLOCK;
-    /* Restore normal background */
+    g_al_ringing     = false;
+    g_al_secs        = 0;
+    g_mode           = MODE_CLOCK;
+    g_clock_force_full = true;
     oledC_setBackground(COL_BG);
 }
 
@@ -444,35 +448,89 @@ static void draw_corner_clock(void)
 /* ═══════════════════════════════════════════════════════════════════════════
  * DIGITAL CLOCK RENDERER
  * ═══════════════════════════════════════════════════════════════════════════ */
+/* Partial-update digital clock.
+ *
+ * Layout (scale 2 → each char 12 × 16 px), time row at y = 30:
+ *   HH  x =  0..23   (erase rect  0,30..23,45)
+ *   :   x = 24..35   (static, never erased)
+ *   MM  x = 36..59   (erase rect 36,30..59,45)
+ *   :   x = 60..71   (static, never erased)
+ *   SS  x = 72..95   (erase rect 72,30..95,45)
+ *
+ * On first call or after returning from menu / alarm (g_clock_force_full):
+ *   full clear → draw static elements → draw all three fields.
+ * On every subsequent call:
+ *   only erase+redraw the field(s) whose value changed.
+ */
 static void render_digital(void)
 {
-    char time_buf[10];
-    char date_buf[8];
+    static uint8_t prev_h   = 0xFFu;   /* 0xFF = "never drawn" sentinel */
+    static uint8_t prev_m   = 0xFFu;
+    static uint8_t prev_s   = 0xFFu;
+    static bool    prev_pm  = false;
+    static bool    prev_al  = false;
+
     uint8_t h  = g_hour;
     bool    pm = false;
-
     if (g_fmt == FMT_12H) {
         pm = (h >= 12u);
         h  =  h % 12u;
         if (h == 0u) h = 12u;
     }
 
-    /* ── Large HH:MM:SS centred vertically ── */
-    snprintf(time_buf, sizeof(time_buf), "%02u:%02u:%02u", h, g_min, g_sec);
-    oledC_DrawString(0u, 30u, 2u, 2u, (uint8_t *)time_buf, COL_TIME);
-
-    /* AM/PM label (12h mode only) */
-    if (g_fmt == FMT_12H) {
-        oledC_DrawString(72u, 52u, 1u, 1u, (uint8_t *)(pm ? "PM" : "AM"), COL_TEXT);
+    if (g_clock_force_full) {
+        g_clock_force_full = false;
+        /* ── Full clear + static elements ── */
+        oledC_clearScreen();
+        /* Colons (never change) */
+        oledC_DrawString(24u, 30u, 2u, 2u, (uint8_t *)":", COL_TIME);
+        oledC_DrawString(60u, 30u, 2u, 2u, (uint8_t *)":", COL_TIME);
+        /* Date */
+        char date_buf[8];
+        snprintf(date_buf, sizeof(date_buf), "%02u/%02u", g_day, g_month);
+        oledC_DrawString(4u, 76u, 1u, 1u, (uint8_t *)date_buf, COL_DATE);
+        /* Alarm icon */
+        if (g_al_enabled) draw_alarm_icon(84u, 4u);
+        prev_al = g_al_enabled;
+        /* AM/PM */
+        if (g_fmt == FMT_12H)
+            oledC_DrawString(72u, 52u, 1u, 1u, (uint8_t *)(pm ? "PM" : "AM"), COL_TEXT);
+        prev_pm = pm;
+        /* Force all three digit fields to redraw below */
+        prev_h = 0xFFu;  prev_m = 0xFFu;  prev_s = 0xFFu;
     }
 
-    /* ── Date: DD/MM ── */
-    snprintf(date_buf, sizeof(date_buf), "%02u/%02u", g_day, g_month);
-    oledC_DrawString(4u, 76u, 1u, 1u, (uint8_t *)date_buf, COL_DATE);
+    /* ── Partial updates: only erase+redraw what changed ── */
+    char buf[4];
 
-    /* ── Alarm icon (top-right if active) ── */
-    if (g_al_enabled) {
-        draw_alarm_icon(84u, 4u);
+    if (h != prev_h) {
+        snprintf(buf, sizeof(buf), "%02u", h);
+        oledC_DrawRectangle(0u, 30u, 23u, 45u, COL_BG);
+        oledC_DrawString(0u, 30u, 2u, 2u, (uint8_t *)buf, COL_TIME);
+        prev_h = h;
+    }
+    if (g_min != prev_m) {
+        snprintf(buf, sizeof(buf), "%02u", g_min);
+        oledC_DrawRectangle(36u, 30u, 59u, 45u, COL_BG);
+        oledC_DrawString(36u, 30u, 2u, 2u, (uint8_t *)buf, COL_TIME);
+        prev_m = g_min;
+    }
+    if (g_sec != prev_s) {
+        snprintf(buf, sizeof(buf), "%02u", g_sec);
+        oledC_DrawRectangle(72u, 30u, 95u, 45u, COL_BG);
+        oledC_DrawString(72u, 30u, 2u, 2u, (uint8_t *)buf, COL_TIME);
+        prev_s = g_sec;
+    }
+    /* AM/PM: update only when it flips */
+    if (g_fmt == FMT_12H && pm != prev_pm) {
+        oledC_DrawString(72u, 52u, 1u, 1u, (uint8_t *)(pm ? "PM" : "AM"), COL_TEXT);
+        prev_pm = pm;
+    }
+    /* Alarm icon: update only when enabled state changes */
+    if (g_al_enabled != prev_al) {
+        if (g_al_enabled) draw_alarm_icon(84u, 4u);
+        else oledC_DrawRectangle(84u, 4u, 95u, 15u, COL_BG);
+        prev_al = g_al_enabled;
     }
 }
 
@@ -518,13 +576,18 @@ static void render_analog(void)
     }
 }
 
-/* Top-level dispatcher: clear, draw clock mode, done */
+/* Top-level dispatcher.
+ * Digital: render_digital() owns clearing (partial-update logic inside).
+ * Analog : still does a full clear each tick (hands move every second). */
 static void render_clock(void)
 {
     oledC_setBackground(COL_BG);
-    oledC_clearScreen();
-    if (g_disp == DISP_DIGITAL) render_digital();
-    else                        render_analog();
+    if (g_disp == DISP_DIGITAL) {
+        render_digital();
+    } else {
+        oledC_clearScreen();
+        render_analog();
+    }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -565,16 +628,19 @@ static void render_menu(void)
 
     /* ─── MAIN MENU ─── */
     case MENU_MAIN: {
-        /* Items: scale-1 text (8 px tall), 11 px row pitch, start at y=10 */
-        for (uint8_t i = 0u; i < MENU_ITEM_COUNT; i++) {
-            uint8_t y = (uint8_t)(10u + i * 11u);
-            if (y > 88u) break;
-            oledC_DrawString(4u, y, 1u, 1u,
-                             (uint8_t *)k_menu_labels[i], COL_MENU_ITEM);
-        }
-        /* White rectangle outline around the selected row */
+        /* Items: scale-1 text (8 px tall), 11 px row pitch, start at y=10.
+         * Selected row: filled white box drawn first, then text in black.
+         * Other rows: white text on black. */
         uint8_t sel_y = (uint8_t)(10u + g_menu_cur * 11u);
         oledC_DrawRectangle(0u, sel_y - 2u, 95u, sel_y + 9u, COL_TEXT);
+
+        for (uint8_t i = 0u; i < MENU_ITEM_COUNT; i++) {
+            uint8_t y   = (uint8_t)(10u + i * 11u);
+            if (y > 88u) break;
+            uint16_t col = (i == g_menu_cur) ? COL_BG : COL_MENU_ITEM;
+            oledC_DrawString(4u, y, 1u, 1u,
+                             (uint8_t *)k_menu_labels[i], col);
+        }
         break;
     }
 
@@ -641,9 +707,16 @@ static void render_menu(void)
             oledC_DrawString(fx[i], fy, 2u, 2u, (uint8_t *)fv[i], col);
         }
 
-        /* White rectangle around the active field */
-        oledC_DrawRectangle(fx[active] - 2u, fy - 2u,
-                            fx[active] + 24u, fy + 16u, COL_TEXT);
+        /* White outline box around the active field (DrawRectangle is filled,
+         * so use four lines to get a border-only look) */
+        {
+            uint8_t bx0 = fx[active] - 2u,  bx1 = fx[active] + 24u;
+            uint8_t by0 = fy - 2u,           by1 = fy + 16u;
+            oledC_DrawLine(bx0, by0, bx1, by0, 1u, COL_TEXT);
+            oledC_DrawLine(bx0, by1, bx1, by1, 1u, COL_TEXT);
+            oledC_DrawLine(bx0, by0, bx0, by1, 1u, COL_TEXT);
+            oledC_DrawLine(bx1, by0, bx1, by1, 1u, COL_TEXT);
+        }
 
         oledC_DrawString(4u, 82u, 1u, 1u, (uint8_t *)"S1:+1  S2:next", COL_FACE);
         break;
@@ -679,8 +752,14 @@ static void render_menu(void)
             uint16_t col = (i == active) ? COL_TEXT : COL_FACE;
             oledC_DrawString(dfx[i], dfy, 2u, 2u, (uint8_t *)dfv[i], col);
         }
-        oledC_DrawRectangle(dfx[active] - 2u, dfy - 2u,
-                            dfx[active] + 24u, dfy + 16u, COL_TEXT);
+        {
+            uint8_t bx0 = dfx[active] - 2u,  bx1 = dfx[active] + 24u;
+            uint8_t by0 = dfy - 2u,           by1 = dfy + 16u;
+            oledC_DrawLine(bx0, by0, bx1, by0, 1u, COL_TEXT);
+            oledC_DrawLine(bx0, by1, bx1, by1, 1u, COL_TEXT);
+            oledC_DrawLine(bx0, by0, bx0, by1, 1u, COL_TEXT);
+            oledC_DrawLine(bx1, by0, bx1, by1, 1u, COL_TEXT);
+        }
 
         oledC_DrawString(4u, 82u, 1u, 1u, (uint8_t *)"S1:+1  S2:next", COL_FACE);
         break;
@@ -716,8 +795,14 @@ static void render_menu(void)
             uint16_t col = (i == active) ? COL_TEXT : COL_FACE;
             oledC_DrawString(afx[i], afy, 2u, 2u, (uint8_t *)afv[i], col);
         }
-        oledC_DrawRectangle(afx[active] - 2u, afy - 2u,
-                            afx[active] + 24u, afy + 16u, COL_ALARM_ICON);
+        {
+            uint8_t bx0 = afx[active] - 2u,  bx1 = afx[active] + 24u;
+            uint8_t by0 = afy - 2u,           by1 = afy + 16u;
+            oledC_DrawLine(bx0, by0, bx1, by0, 1u, COL_ALARM_ICON);
+            oledC_DrawLine(bx0, by1, bx1, by1, 1u, COL_ALARM_ICON);
+            oledC_DrawLine(bx0, by0, bx0, by1, 1u, COL_ALARM_ICON);
+            oledC_DrawLine(bx1, by0, bx1, by1, 1u, COL_ALARM_ICON);
+        }
 
         oledC_DrawString(4u, 82u, 1u, 1u, (uint8_t *)"S1:+1  S2:next", COL_FACE);
         break;
@@ -759,9 +844,10 @@ static void menu_enter_state(MenuSt st)
 /* Leave menu entirely → return to clock */
 static void menu_exit(void)
 {
-    g_mode     = MODE_CLOCK;
-    g_menu_st  = MENU_MAIN;
-    g_menu_cur = 0u;
+    g_mode           = MODE_CLOCK;
+    g_menu_st        = MENU_MAIN;
+    g_menu_cur       = 0u;
+    g_clock_force_full = true;
 }
 
 /*
