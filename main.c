@@ -230,6 +230,10 @@ static bool g_clock_force_full = true;
 static void hw_init(void);
 static void timer1_init(void);
 static void accel_init(void);
+static void adc_init(void);
+
+/* Potentiometer */
+static uint16_t adc_read_pot(void);
 
 /* RTC / alarm */
 static void rtc_advance(void);
@@ -305,6 +309,36 @@ static void timer1_init(void)
 static void accel_init(void)
 {
     i2cWriteSlave(ACCEL_WRITE_ADDR, ACCEL_REG_PWRCTL, ACCEL_MEASURE_BIT);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * POTENTIOMETER  –  AN8 / RB12  (component R10 on board)
+ *
+ * 10-bit ADC → returns 0–1023.
+ * Used for menu navigation and live value editing.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+static void adc_init(void)
+{
+    ANSBbits.ANSB12   = 1;   /* RB12 / AN8 → analog mode */
+    TRISBbits.TRISB12 = 1;   /* input */
+
+    AD1CON1 = 0x0000;        /* integer output, manual sample/convert */
+    AD1CON2 = 0x0000;        /* Vdd/Vss reference, CH0, 1 sample/interrupt */
+    AD1CON3 = 0x0F02;        /* Tad = 3·Tcy (750 ns @ 4 MHz), 15 Tad sample */
+    AD1CHS  = 0x0008u;       /* positive input = AN8 */
+    AD1CON1bits.ADON = 1;    /* enable ADC module */
+}
+
+/* Blocking single-shot read; takes < 20 µs at 4 MHz FCY. */
+static uint16_t adc_read_pot(void)
+{
+    AD1CON1bits.SAMP = 1;    /* start sampling */
+    __builtin_nop(); __builtin_nop(); __builtin_nop();
+    __builtin_nop(); __builtin_nop(); __builtin_nop();  /* ~1.5 µs settle */
+    AD1CON1bits.SAMP = 0;    /* end sample → conversion begins */
+    while (!AD1CON1bits.DONE);
+    AD1CON1bits.DONE = 0;
+    return (uint16_t)ADC1BUF0;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -992,6 +1026,7 @@ int main(void)
     oledC_clearScreen();
     i2c1_open();
     accel_init();
+    adc_init();
     timer1_init();          /* starts 1-second ISR */
 
     /* ── Button edge-detection state ── */
@@ -1056,11 +1091,14 @@ int main(void)
             s1_long_fired = true;
         }
 
-        /* ── 3. READ ACCELEROMETER ────────────────────────────────────── */
+        /* ── 3. READ POTENTIOMETER (AN8 / RB12) ──────────────────────── */
+        uint16_t pot = adc_read_pot();   /* 0–1023 */
+
+        /* ── 4. READ ACCELEROMETER ────────────────────────────────────── */
         bool shaken  = accel_shaken();
         bool flipped = accel_flipped();
 
-        /* ── 4. STATE MACHINE ─────────────────────────────────────────── */
+        /* ── 5. STATE MACHINE ─────────────────────────────────────────── */
         switch (g_mode) {
 
         /* ============================================================
@@ -1096,13 +1134,63 @@ int main(void)
                 break;
             }
 
-            /* S1 short-press  →  navigate / increment */
+            /* ── Potentiometer: live navigation / value control ── */
+            {
+                uint8_t nv = 0u;
+                switch (g_menu_st) {
+
+                case MENU_MAIN:
+                    /* Map full pot range to menu items */
+                    nv = (uint8_t)((uint32_t)pot * MENU_ITEM_COUNT / 1024u);
+                    if (nv >= MENU_ITEM_COUNT) nv = MENU_ITEM_COUNT - 1u;
+                    if (nv != g_menu_cur) { g_menu_cur = nv; need_draw = true; }
+                    break;
+
+                case MENU_DISP_MODE:
+                case MENU_TIME_FMT:
+                case MENU_ALARM_OFF:
+                    /* Two options: left half = 0, right half = 1 */
+                    nv = (pot >= 512u) ? 1u : 0u;
+                    if (nv != g_edit_val) { g_edit_val = nv; need_draw = true; }
+                    break;
+
+                case MENU_TIME_H:
+                case MENU_ALARM_H:
+                    nv = (uint8_t)((uint32_t)pot * 24u / 1024u);
+                    if (nv != g_edit_val) { g_edit_val = nv; need_draw = true; }
+                    break;
+
+                case MENU_TIME_M:
+                case MENU_TIME_S:
+                case MENU_ALARM_M:
+                    nv = (uint8_t)((uint32_t)pot * 60u / 1024u);
+                    if (nv != g_edit_val) { g_edit_val = nv; need_draw = true; }
+                    break;
+
+                case MENU_DATE_D: {
+                    uint8_t days = k_days[g_month - 1u];
+                    nv = (uint8_t)(1u + (uint32_t)pot * days / 1024u);
+                    if (nv > days) nv = days;
+                    if (nv != g_edit_val) { g_edit_val = nv; need_draw = true; }
+                    break;
+                }
+                case MENU_DATE_M:
+                    nv = (uint8_t)(1u + (uint32_t)pot * 12u / 1024u);
+                    if (nv > 12u) nv = 12u;
+                    if (nv != g_edit_val) { g_edit_val = nv; need_draw = true; }
+                    break;
+
+                default: break;
+                }
+            }
+
+            /* S1 short-press  →  fine +1 nudge (useful when pot is hard to position precisely) */
             if (s1_rising) {
                 menu_s1_press();
                 need_draw = true;
             }
 
-            /* S2 short-press  →  select / confirm */
+            /* S2 short-press  →  confirm / advance to next field */
             if (s2_rising) {
                 menu_s2_press();
                 need_draw = true;
