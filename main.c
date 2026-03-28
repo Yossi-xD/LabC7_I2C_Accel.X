@@ -858,7 +858,12 @@ int main(void)
         }
 
         /* ── 2. READ BUTTONS ──────────────────────────────────────────── */
+        /* RC9 is shared with OLED CS (oledC_setup sets TRISC9=0, output).
+         * Briefly switch to input so the physical button can be read,
+         * then restore output so the next OLED transaction works. */
+        S1_TRIS = 1;
         bool s1 = S1_PRESSED();
+        S1_TRIS = 0;
         bool s2 = S2_PRESSED();
 
         bool s1_rising = ( s1 && !s1_prev);
