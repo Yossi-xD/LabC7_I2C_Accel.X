@@ -54,6 +54,7 @@
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 #define ACCEL_WRITE_ADDR    0x3A        /* 7-bit addr 0x1D << 1 */
+#define ACCEL_REG_DEVID     0x00
 #define ACCEL_REG_PWRCTL    0x2D
 #define ACCEL_REG_DATAX0    0x32
 #define ACCEL_REG_DATAY0    0x34
@@ -64,6 +65,8 @@
  * DISPLAY CONSTANTS  (SSD1351 OLED Click – 96 × 96 px colour)
  * ═══════════════════════════════════════════════════════════════════════════ */
 
+#define SCR_W   96u
+#define SCR_H   96u
 
 /* Analog clock geometry */
 #define CLK_CX  47u         /* center X */
@@ -81,8 +84,16 @@
 /* Colour palette used by the app */
 #define COL_BG          OLEDC_COLOR_BLACK
 #define COL_TEXT        OLEDC_COLOR_WHITE
+#define COL_TIME        OLEDC_COLOR_CYAN
+#define COL_DATE        OLEDC_COLOR_YELLOW
+#define COL_ALARM_ICON  OLEDC_COLOR_RED
 #define COL_FACE        OLEDC_COLOR_DARKGRAY
+#define COL_HAND_SEC    OLEDC_COLOR_RED
+#define COL_HAND_MIN    OLEDC_COLOR_WHITE
+#define COL_HAND_HOUR   OLEDC_COLOR_YELLOW
+#define COL_MENU_SEL    OLEDC_COLOR_CYAN
 #define COL_MENU_ITEM   OLEDC_COLOR_WHITE
+#define COL_MENU_HDR    OLEDC_COLOR_YELLOW
 #define COL_CORNER_CLK  OLEDC_COLOR_DARKGRAY
 #define COL_ALARM_BG    OLEDC_COLOR_DARKRED
 #define COL_ALARM_TEXT  OLEDC_COLOR_WHITE
@@ -532,10 +543,12 @@ static void render_digital(void)
 {
     char    time_buf[10];
     char    date_buf[6];
-    uint8_t h = g_hour;
+    uint8_t h  = g_hour;
+    bool    pm = false;
 
     if (g_fmt == FMT_12H) {
-        h = h % 12u;
+        pm = (h >= 12u);
+        h  =  h % 12u;
         if (h == 0u) h = 12u;
     }
 
