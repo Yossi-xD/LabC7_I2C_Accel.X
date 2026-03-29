@@ -1,33 +1,9 @@
 /*
- * main.c  –  Smartwatch Application
- * Target : PIC24FJ256GA705 (PIC Curiosity Board)
- * Compiler: XC16
+ * File:   main.c
+ * Author: Yousef Yousef
  *
- * ── Architecture ──────────────────────────────────────────────────────────────
- *  • TMR1 ISR fires every second  →  sets g_tick + toggles g_blink_state
- *  • Main loop (~10 ms / iteration via DELAY_milliseconds)
- *      1. Consume g_tick  →  advance RTC, check alarm
- *      2. Read buttons, detect long-press S1
- *      3. Read accelerometer  →  detect shake / flip
- *      4. Drive state machine  →  MODE_CLOCK / MODE_MENU / MODE_ALARM
- *      5. Render display only when something changed
- *
- * ── Driver API used (drivers NOT modified) ───────────────────────────────────
- *  oledC_clearScreen(), oledC_setBackground(color)
- *  oledC_DrawString(x,y,sx,sy,str,color)
- *  oledC_DrawLine(x0,y0,x1,y1,width,color)
- *  oledC_DrawCircle(cx,cy,r,color)
- *  oledC_DrawRectangle(x0,y0,x1,y1,color)
- *  oledC_DrawPoint(x,y,color)  /  oledC_DrawThickPoint(cx,cy,w,color)
- *  i2cReadSlaveRegister(devAddW, regAddr, *byte)
- *  i2cWriteSlave(devAddW, regAddr, byte)
- *  DELAY_milliseconds(ms)
- *  SYSTEM_Initialize()
- *
- * ── Board pin assignments (adjust macros if your wiring differs) ──────────────
- *  LED1 → RA8 (active HIGH)    LED2 → RA9 (active HIGH)
- *  S1   → RC9 (active LOW)     S2   → RC5 (active LOW)
- * ─────────────────────────────────────────────────────────────────────────────
+ * Created on May 21, 2022
+ * Fixed March 29, 2026
  */
 
 #include <stdlib.h>
@@ -78,7 +54,6 @@
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 #define ACCEL_WRITE_ADDR    0x3A        /* 7-bit addr 0x1D << 1 */
-#define ACCEL_REG_DEVID     0x00
 #define ACCEL_REG_PWRCTL    0x2D
 #define ACCEL_REG_DATAX0    0x32
 #define ACCEL_REG_DATAY0    0x34
@@ -89,8 +64,6 @@
  * DISPLAY CONSTANTS  (SSD1351 OLED Click – 96 × 96 px colour)
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-#define SCR_W   96u
-#define SCR_H   96u
 
 /* Analog clock geometry */
 #define CLK_CX  47u         /* center X */
@@ -108,16 +81,8 @@
 /* Colour palette used by the app */
 #define COL_BG          OLEDC_COLOR_BLACK
 #define COL_TEXT        OLEDC_COLOR_WHITE
-#define COL_TIME        OLEDC_COLOR_CYAN
-#define COL_DATE        OLEDC_COLOR_YELLOW
-#define COL_ALARM_ICON  OLEDC_COLOR_RED
 #define COL_FACE        OLEDC_COLOR_DARKGRAY
-#define COL_HAND_SEC    OLEDC_COLOR_RED
-#define COL_HAND_MIN    OLEDC_COLOR_WHITE
-#define COL_HAND_HOUR   OLEDC_COLOR_YELLOW
-#define COL_MENU_SEL    OLEDC_COLOR_CYAN
 #define COL_MENU_ITEM   OLEDC_COLOR_WHITE
-#define COL_MENU_HDR    OLEDC_COLOR_YELLOW
 #define COL_CORNER_CLK  OLEDC_COLOR_DARKGRAY
 #define COL_ALARM_BG    OLEDC_COLOR_DARKRED
 #define COL_ALARM_TEXT  OLEDC_COLOR_WHITE
@@ -280,10 +245,6 @@ static void menu_s2_press(void);
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * TMR1 INTERRUPT SERVICE ROUTINE  (fires every 1 second)
- *
- * Setup: FCY = 4 MHz (FRC 8 MHz / 2)
- *   Prescaler 1:256  →  4,000,000/256 = 15,625 ticks/s
- *   PR1 = 15624  →  interrupt every exactly 1 second
  * ═══════════════════════════════════════════════════════════════════════════ */
 void __attribute__((interrupt, no_auto_psv)) _T1Interrupt(void)
 {
@@ -327,23 +288,19 @@ static void accel_init(void)
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * POTENTIOMETER  –  AN8 / RB12  (component R10 on board)
- *
- * 10-bit ADC → returns 0–1023.
- * Used for menu navigation and live value editing.
+ * POTENTIOMETER
  * ═══════════════════════════════════════════════════════════════════════════ */
 static void adc_init(void)
-{
-    ANSBbits.ANSB12   = 1;   /* RB12 / AN8 → analog mode */
-    TRISBbits.TRISB12 = 1;   /* input */
+ANSBbits.ANSB12   = 1;
+TRISBbits.TRISB12 = 1;
 
-    AD1CON1bits.ADON = 0;    /* ensure off before configuring */
-    AD1CON1 = 0x0000;        /* integer output, manual sample/convert */
-    AD1CON2 = 0x0000;        /* Vdd/Vss reference, CH0, 1 sample/interrupt */
-    AD1CON3 = 0x0F02;        /* Tad = 3·Tcy (750 ns @ 4 MHz), 15 Tad sample */
-    AD1CHS  = 8u;            /* positive input = AN8 */
-    AD1CON1bits.ADON = 1;    /* enable ADC module */
-    DELAY_milliseconds(1);   /* allow module to stabilise before first sample */
+AD1CON1bits.ADON = 0;
+AD1CON1 = 0x0000;
+AD1CON2 = 0x0000;
+AD1CON3 = 0x0F02;
+AD1CHS  = 8u;
+AD1CON1bits.ADON = 1;
+DELAY_milliseconds(1);
 }
 
 /* Single-shot read with timeout so a misconfigured ADC never hangs the loop. */
@@ -538,15 +495,15 @@ static void draw_alarm_clock_icon(uint8_t cx, uint8_t cy, uint16_t color)
     /* Clock face border */
     oledC_DrawCircle(cx, cy, 5u, color);
     /* Hour markers at 12, 3, 6, 9 — dots just inside the rim */
-    oledC_DrawPoint(cx,       cy - 4u, color);   /* 12 */
-    oledC_DrawPoint(cx + 4u,  cy,      color);   /* 3  */
-    oledC_DrawPoint(cx,       cy + 4u, color);   /* 6  */
-    oledC_DrawPoint(cx - 4u,  cy,      color);   /* 9  */
+    oledC_DrawPoint(cx,       cy - 4u, color);
+    oledC_DrawPoint(cx + 4u,  cy,      color);
+    oledC_DrawPoint(cx,       cy + 4u, color);
+    oledC_DrawPoint(cx - 4u,  cy,      color);
     /* Diagonal markers at 1:30, 4:30, 7:30, 10:30 */
-    oledC_DrawPoint(cx + 3u,  cy - 3u, color);   /* 1:30 */
-    oledC_DrawPoint(cx + 3u,  cy + 3u, color);   /* 4:30 */
-    oledC_DrawPoint(cx - 3u,  cy + 3u, color);   /* 7:30 */
-    oledC_DrawPoint(cx - 3u,  cy - 3u, color);   /* 10:30 */
+    oledC_DrawPoint(cx + 3u,  cy - 3u, color);
+    oledC_DrawPoint(cx + 3u,  cy + 3u, color);
+    oledC_DrawPoint(cx - 3u,  cy + 3u, color);
+    oledC_DrawPoint(cx - 3u,  cy - 3u, color);
 }
 
 /*
@@ -563,26 +520,22 @@ static void draw_corner_clock(void)
     }
     snprintf(buf, sizeof(buf), "%02u:%02u:%02u", h, g_min, g_sec);
     /* Clear the text area first so old digit pixels don't bleed through.
-     * "HH:MM:SS" = 8 chars × 6 px wide × 8 px tall at scale 1. */
+     * "HH:MM:SS". */
     oledC_DrawRectangle(36u, 0u, 95u, 8u, COL_BG);
     oledC_DrawString(36u, 0u, 1u, 1u, (uint8_t *)buf, COL_CORNER_CLK);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * DIGITAL CLOCK RENDERER
- * Layout: small watch icon top-left │ large centred time │
- *         am/pm bottom-left         │ DD/MM bottom-right
  * ═══════════════════════════════════════════════════════════════════════════ */
 static void render_digital(void)
 {
     char    time_buf[10];
     char    date_buf[6];
-    uint8_t h  = g_hour;
-    bool    pm = false;
+    uint8_t h = g_hour;
 
     if (g_fmt == FMT_12H) {
-        pm = (h >= 12u);
-        h  =  h % 12u;
+        h = h % 12u;
         if (h == 0u) h = 12u;
     }
 
@@ -591,13 +544,11 @@ static void render_digital(void)
         draw_alarm_clock_icon(6u, 6u, COL_TEXT);
     }
 
-    /* ── Large centred HH:MM:SS ──
-     * sx=2: each char advances 5*2+1 = 11 px; 8 chars × 11 = 88 px total.
-     * x = (96 - 88) / 2 = 4 to centre on the 96-px-wide screen.          */
+    /* Large centred HH:MM:SS */
     snprintf(time_buf, sizeof(time_buf), "%02u:%02u:%02u", h, g_min, g_sec);
     oledC_DrawString(4u, 34u, 2u, 2u, (uint8_t *)time_buf, COL_TEXT);
 
-    /* ── am / pm  bottom-left (always shown, based on current hour) ── */
+    /* ── am / pm  bottom-left  ── */
     oledC_DrawString(2u, 86u, 1u, 1u,
                      (uint8_t *)((g_hour >= 12u) ? "pm" : "am"), COL_TEXT);
 
@@ -612,11 +563,6 @@ static void render_digital(void)
     s_dig_alarm = g_al_enabled ? 1u : 0u;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
- * DIGITAL CLOCK PARTIAL UPDATE  –  only the time string area, no screen clear.
- * Called every second while in digital mode.  Full render_digital() is used
- * when static elements (am/pm, date, alarm icon) change.
- * ═══════════════════════════════════════════════════════════════════════════ */
 static void render_digital_update(void)
 {
     char    time_buf[10];
@@ -1139,16 +1085,13 @@ int main(void)
             }
 
             if (g_mode == MODE_MENU) {
-                /* Menu: just overwrite the corner clock text — no screen clear,
-                 * no flicker.  Full redraw only happens on button presses. */
+                /* Only update the corner clock — avoids clearing the whole menu */
                 draw_corner_clock();
             } else if (g_mode == MODE_CLOCK && g_disp == DISP_ANALOG) {
-                /* Analog clock: erase old hands, redraw ticks, draw new hands.
-                 * No screen clear → no flash. */
+                /* Erase old hands, restore ticks, draw new hands — no clear, no flash */
                 render_analog_update();
             } else if (g_mode == MODE_CLOCK && g_disp == DISP_DIGITAL) {
-                /* Digital clock: only redraw the time string area each second.
-                 * Trigger a full redraw when am/pm, date, or alarm icon changes. */
+                /* Full redraw only when am/pm, date, or alarm icon changes */
                 uint8_t cur_ampm  = (g_hour >= 12u) ? 1u : 0u;
                 uint8_t cur_alarm = g_al_enabled ? 1u : 0u;
                 if (cur_ampm  != s_dig_ampm  || g_day   != s_dig_day  ||
@@ -1170,9 +1113,7 @@ int main(void)
         bool s1_rising = (s1 && !s1_prev);
         bool s2_rising = (s2 && !s2_prev);
 
-        /* Long-press: exactly LONG_PRESS_SECS seconds, ISR-timed.
-         * Record the second-count when S1 first goes down; fire once when
-         * the elapsed seconds reach the threshold; reset on release. */
+        /* Long-press: fires once after LONG_PRESS_SECS seconds, ISR-timed */
         if (s1_rising) {
             s1_press_start = g_uptime_secs;
             s1_long_fired  = false;
@@ -1267,7 +1208,7 @@ int main(void)
                 }
             }
 
-            /* S1 short-press  →  fine +1 nudge (useful when pot is hard to position precisely) */
+            /* S1: navigate main menu or toggle display/format options */
             if (s1_rising) {
                 menu_s1_press();
                 need_draw = true;
@@ -1296,7 +1237,7 @@ int main(void)
             break;
         }
 
-        /* ── 5. RENDER (only when something changed) ──────────────────── */
+        /* ── 6. RENDER (only when something changed) ──────────────────── */
         if (need_draw) {
             need_draw = false;
             switch (g_mode) {
