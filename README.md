@@ -10,10 +10,10 @@ A PIC24FJ256GA705-based smart watch with a 96×96 colour OLED display, ADXL345 a
 |---|---|
 | **S1** (short press) | Move menu cursor down |
 | **S2** (short press) | Confirm selection / advance to next field |
-| **S1** (long press, 2 sec) | Open / close the menu |
+| **S1** (long press, 2 sec) | Open the menu |
 | **Potentiometer** | Change value when editing a field |
-| **Shake device** | Dismiss a ringing alarm |
-| **Flip device face-down** | Dismiss a ringing alarm |
+| **Shake device** | Dismiss a ringing alarm / Exit Menu |
+| **Flip device face-down** | Dismiss a ringing alarm / Exit Menu |
 
 ---
 
@@ -36,7 +36,7 @@ The watch has two display modes switchable from the menu.
 
 ## Menu
 
-Hold **S1 for 2 seconds** from the clock screen to open the menu. Press **S1** to scroll through items, **S2** to select. Hold **S1** again to exit without changing anything.
+Hold **S1 for 2 seconds** from the clock screen to open the menu. Press **S1** to scroll through items, **S2** to select. Shake / Flip Device to exit.
 
 | Item | What it does |
 |---|---|
@@ -64,16 +64,3 @@ Arrows on the left side of the screen show which field is active.
 - **Dismiss** by shaking the device, flipping it face-down, or pressing **S2**.
 - The alarm **auto-stops after 20 seconds** if not dismissed manually.
 - Any of these dismissal methods fully disables the alarm. Use **Set Alarm** again to re-enable it.
-
----
-
-## Hardware
-
-| Component | Detail |
-|---|---|
-| MCU | PIC24FJ256GA705 |
-| Display | SSD1351 OLED Click, 96×96 px colour |
-| Accelerometer | ADXL345 via I2C |
-| Potentiometer | AN8 / RB12 |
-| Buttons | S1 → RA11, S2 → RA12 (active LOW) |
-| LEDs | LED1 → RA8, LED2 → RA9 (active HIGH) |
