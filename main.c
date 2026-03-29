@@ -838,15 +838,18 @@ static void render_menu(void)
         /* Title */
         oledC_DrawString(20u, 14u, 1u, 1u, (uint8_t *)"SET TIME", COL_TEXT);
 
-        /* Up arrow  (tip points up at y=30, shaft to y=42) */
-        oledC_DrawLine(5u, 30u, 1u, 35u, 1u, COL_TEXT);
-        oledC_DrawLine(5u, 30u, 9u, 35u, 1u, COL_TEXT);
-        oledC_DrawLine(5u, 30u, 5u, 42u, 1u, COL_TEXT);
-
-        /* Down arrow (tip points down at y=68, shaft from y=56) */
-        oledC_DrawLine(5u, 68u, 1u, 63u, 1u, COL_TEXT);
-        oledC_DrawLine(5u, 68u, 9u, 63u, 1u, COL_TEXT);
-        oledC_DrawLine(5u, 56u, 5u, 68u, 1u, COL_TEXT);
+        /* Up arrow ↑: solid triangle tip-up, shaft below */
+        oledC_DrawPoint(5u, 26u, COL_TEXT);
+        draw_line_any(4u, 27u, 6u, 27u, COL_TEXT);
+        draw_line_any(3u, 28u, 7u, 28u, COL_TEXT);
+        draw_line_any(2u, 29u, 8u, 29u, COL_TEXT);
+        draw_line_any(5u, 30u, 5u, 40u, COL_TEXT);
+        /* Down arrow ↓: shaft above, solid triangle tip-down */
+        draw_line_any(5u, 62u, 5u, 72u, COL_TEXT);
+        draw_line_any(2u, 72u, 8u, 72u, COL_TEXT);
+        draw_line_any(3u, 73u, 7u, 73u, COL_TEXT);
+        draw_line_any(4u, 74u, 6u, 74u, COL_TEXT);
+        oledC_DrawPoint(5u, 75u, COL_TEXT);
 
         /* Field X anchors (scale-2 → each 2-digit field is 24 px wide) */
         static const uint8_t fx[3] = { 12u, 40u, 68u };
@@ -864,7 +867,7 @@ static void render_menu(void)
             }
         }
 
-        oledC_DrawString(4u, 82u, 1u, 1u, (uint8_t *)"S1:+1  S2:next", COL_FACE);
+        oledC_DrawString(4u, 82u, 1u, 1u, (uint8_t *)"pot:val  S2:next", COL_FACE);
         break;
     }
 
@@ -910,7 +913,7 @@ static void render_menu(void)
             }
         }
 
-        oledC_DrawString(4u, 82u, 1u, 1u, (uint8_t *)"S1:+1  S2:next", COL_FACE);
+        oledC_DrawString(4u, 82u, 1u, 1u, (uint8_t *)"pot:val  S2:next", COL_FACE);
         break;
     }
 
@@ -956,7 +959,7 @@ static void render_menu(void)
             }
         }
 
-        oledC_DrawString(4u, 82u, 1u, 1u, (uint8_t *)"S1:+1  S2:next", COL_FACE);
+        oledC_DrawString(4u, 82u, 1u, 1u, (uint8_t *)"pot:val  S2:next", COL_FACE);
         break;
     }
 
@@ -996,9 +999,9 @@ static void menu_exit(void)
 
 /*
  * S1 short-press inside menu:
- *   MENU_MAIN → move cursor down (wraps)
- *   submenus  → increment edit value (wraps)
- *   confirm dialogs → cancel / go back
+ *   MENU_MAIN      → move cursor down (wraps)
+ *   DISP/FMT menus → toggle option
+ *   editing states → ignored (potentiometer controls the value)
  */
 static void menu_s1_press(void)
 {
@@ -1010,27 +1013,6 @@ static void menu_s1_press(void)
     case MENU_DISP_MODE:
     case MENU_TIME_FMT:
         g_edit_val ^= 1u;           /* toggle 0 ↔ 1 */
-        break;
-
-    case MENU_TIME_H:
-    case MENU_ALARM_H:
-        g_edit_val = (g_edit_val + 1u) % 24u;
-        break;
-
-    case MENU_TIME_M:
-    case MENU_TIME_S:
-    case MENU_ALARM_M:
-        g_edit_val = (g_edit_val + 1u) % 60u;
-        break;
-
-    case MENU_DATE_D: {
-        /* Wrap within valid days for current (or editing) month */
-        uint8_t mx = k_days[g_month - 1u];
-        g_edit_val = (g_edit_val % mx) + 1u;
-        break;
-    }
-    case MENU_DATE_M:
-        g_edit_val = (g_edit_val % 12u) + 1u;
         break;
 
     default: break;
