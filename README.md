@@ -1,6 +1,10 @@
 # Smart Watch – User Guide
 
-A PIC24FJ256GA705-based smart watch with a 96×96 colour OLED display, ADXL345 accelerometer, and potentiometer input.
+
+# Submitted By:
+    - Yousef Yousef
+    - ID: 213521073
+    - Submitted 29/3/2026
 
 ---
 
