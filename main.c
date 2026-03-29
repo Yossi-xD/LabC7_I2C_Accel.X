@@ -6,9 +6,7 @@
  * Fixed March 29, 2026
  */
 
-#include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <math.h>                       /* sinf, cosf  – link with -lm */
@@ -63,9 +61,6 @@
 /* ═══════════════════════════════════════════════════════════════════════════
  * DISPLAY CONSTANTS  (SSD1351 OLED Click – 96 × 96 px colour)
  * ═══════════════════════════════════════════════════════════════════════════ */
-
-#define SCR_W   96u
-#define SCR_H   96u
 
 /* Analog clock geometry */
 #define CLK_CX  47u         /* center X */
