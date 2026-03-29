@@ -536,20 +536,18 @@ static void draw_hand(uint8_t cx, uint8_t cy, uint8_t len, float angle_rad, uint
  */
 static void draw_alarm_clock_icon(uint8_t cx, uint8_t cy, uint16_t color)
 {
-    /* Bell bump stems (diagonal lines toward top corners) */
-    draw_line_any(cx - 2u, cy - 4u, cx - 4u, cy - 6u, color);
-    draw_line_any(cx + 2u, cy - 4u, cx + 4u, cy - 6u, color);
-    /* Bell bump tips */
-    oledC_DrawPoint(cx - 4u, cy - 6u, color);
-    oledC_DrawPoint(cx + 4u, cy - 6u, color);
-    /* Clock body */
-    oledC_DrawCircle(cx, cy, 4u, color);
-    /* Hands: 12 o'clock and 3 o'clock */
-    draw_line_any(cx, cy, cx, cy - 2u, color);
-    draw_line_any(cx, cy, cx + 2u, cy, color);
-    /* Feet */
-    draw_line_any(cx - 2u, cy + 4u, cx - 3u, cy + 6u, color);
-    draw_line_any(cx + 2u, cy + 4u, cx + 3u, cy + 6u, color);
+    /* Clock face border */
+    oledC_DrawCircle(cx, cy, 5u, color);
+    /* Hour markers at 12, 3, 6, 9 — dots just inside the rim */
+    oledC_DrawPoint(cx,       cy - 4u, color);   /* 12 */
+    oledC_DrawPoint(cx + 4u,  cy,      color);   /* 3  */
+    oledC_DrawPoint(cx,       cy + 4u, color);   /* 6  */
+    oledC_DrawPoint(cx - 4u,  cy,      color);   /* 9  */
+    /* Diagonal markers at 1:30, 4:30, 7:30, 10:30 */
+    oledC_DrawPoint(cx + 3u,  cy - 3u, color);   /* 1:30 */
+    oledC_DrawPoint(cx + 3u,  cy + 3u, color);   /* 4:30 */
+    oledC_DrawPoint(cx - 3u,  cy + 3u, color);   /* 7:30 */
+    oledC_DrawPoint(cx - 3u,  cy - 3u, color);   /* 10:30 */
 }
 
 /*
@@ -591,7 +589,7 @@ static void render_digital(void)
 
     /* ── Alarm clock icon top-left — only when alarm is active ── */
     if (g_al_enabled) {
-        draw_alarm_clock_icon(7u, 8u, COL_TEXT);
+        draw_alarm_clock_icon(6u, 6u, COL_TEXT);
     }
 
     /* ── Large centred HH:MM:SS ──
@@ -662,7 +660,7 @@ static void render_analog(void)
 
     /* ── Alarm clock icon top-left — only when alarm is active ── */
     if (g_al_enabled) {
-        draw_alarm_clock_icon(7u, 8u, COL_TEXT);
+        draw_alarm_clock_icon(6u, 6u, COL_TEXT);
     }
 
     /* ── Hands: hour=thick, minute=medium, second=thin ── */
@@ -676,7 +674,11 @@ static void render_analog(void)
     draw_hand(CLK_CX, CLK_CY, H_SEC,  sec_a,  COL_TEXT, HAND_W_SEC);
     oledC_DrawThickPoint(CLK_CX, CLK_CY, 2u, COL_TEXT);
 
-    /* Date DD/MM bottom-right (no am/pm on analog face) */
+    /* am/pm bottom-left */
+    oledC_DrawString(2u, 86u, 1u, 1u,
+                     (uint8_t *)((g_hour >= 12u) ? "pm" : "am"), COL_TEXT);
+
+    /* Date DD/MM bottom-right */
     {
         char dline[6];
         snprintf(dline, sizeof(dline), "%02u/%02u", g_day, g_month);
