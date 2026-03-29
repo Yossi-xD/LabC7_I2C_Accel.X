@@ -228,6 +228,12 @@ static uint8_t s_hand_sec  = 0xFFu;
 static uint8_t s_hand_min  = 0xFFu;
 static uint8_t s_hand_hour = 0xFFu;
 
+/* Digital clock static-element snapshot — detect when a full redraw is needed */
+static uint8_t s_dig_ampm  = 0xFFu;   /* 0=am 1=pm, 0xFF=not yet drawn */
+static uint8_t s_dig_day   = 0xFFu;
+static uint8_t s_dig_month = 0xFFu;
+static uint8_t s_dig_alarm = 0xFFu;   /* 0=off 1=on, 0xFF=not yet drawn */
+
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * FORWARD DECLARATIONS
@@ -255,13 +261,14 @@ static bool    accel_flipped(void);
 /* Display helpers */
 static void draw_line_any(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, uint16_t color);
 static void draw_hand(uint8_t cx, uint8_t cy, uint8_t len, float angle_rad, uint16_t color, uint8_t half_w);
-static void draw_alarm_icon(uint8_t x, uint8_t y);
+static void draw_alarm_clock_icon(uint8_t cx, uint8_t cy, uint16_t color);
 static void draw_corner_clock(void);
 static void draw_analog_ticks(void);
 
 /* Top-level renderers */
 static void render_clock(void);
 static void render_digital(void);
+static void render_digital_update(void);  /* partial: time string only, no flash */
 static void render_analog(void);
 static void render_analog_update(void);   /* partial: hands only, no flash */
 static void render_menu(void);
@@ -522,17 +529,27 @@ static void draw_hand(uint8_t cx, uint8_t cy, uint8_t len, float angle_rad, uint
 }
 
 /*
- * Draw a small alarm-bell icon (7×8 px) at pixel (x, y).
- * Uses simple rectangles/lines composited from the color.
+ * Draw a small alarm-clock icon (~14×14 px) centred at (cx, cy).
+ * Body: circle r=4. Two bell bumps at upper-left and upper-right.
+ * Two short feet at bottom. Hands at 12 and 3.
+ * Pass COL_BG as color to erase.
  */
-static void draw_alarm_icon(uint8_t x, uint8_t y)
+static void draw_alarm_clock_icon(uint8_t cx, uint8_t cy, uint16_t color)
 {
-    /* Bell dome */
-    oledC_DrawRectangle(x+1, y,   x+5, y+4, COL_ALARM_ICON);
-    /* Bell base / clapper */
-    oledC_DrawLine(x,   y+4, x+6, y+4, 1, COL_ALARM_ICON);
-    oledC_DrawLine(x+2, y+5, x+4, y+5, 1, COL_ALARM_ICON);
-    oledC_DrawPoint(x+3, y+6, COL_ALARM_ICON);
+    /* Bell bump stems (diagonal lines toward top corners) */
+    draw_line_any(cx - 2u, cy - 4u, cx - 4u, cy - 6u, color);
+    draw_line_any(cx + 2u, cy - 4u, cx + 4u, cy - 6u, color);
+    /* Bell bump tips */
+    oledC_DrawPoint(cx - 4u, cy - 6u, color);
+    oledC_DrawPoint(cx + 4u, cy - 6u, color);
+    /* Clock body */
+    oledC_DrawCircle(cx, cy, 4u, color);
+    /* Hands: 12 o'clock and 3 o'clock */
+    draw_line_any(cx, cy, cx, cy - 2u, color);
+    draw_line_any(cx, cy, cx + 2u, cy, color);
+    /* Feet */
+    draw_line_any(cx - 2u, cy + 4u, cx - 3u, cy + 6u, color);
+    draw_line_any(cx + 2u, cy + 4u, cx + 3u, cy + 6u, color);
 }
 
 /*
@@ -572,11 +589,9 @@ static void render_digital(void)
         if (h == 0u) h = 12u;
     }
 
-    /* ── Small clock icon top-left — only when alarm is active ── */
+    /* ── Alarm clock icon top-left — only when alarm is active ── */
     if (g_al_enabled) {
-        oledC_DrawCircle(6u, 6u, 5u, COL_TEXT);
-        draw_line_any(6u, 6u, 6u, 2u, COL_TEXT);   /* minute hand → 12 */
-        draw_line_any(6u, 6u, 9u, 6u, COL_TEXT);   /* hour hand   → 3  */
+        draw_alarm_clock_icon(7u, 8u, COL_TEXT);
     }
 
     /* ── Large centred HH:MM:SS ──
@@ -592,6 +607,31 @@ static void render_digital(void)
     /* ── Date DD/MM  bottom-right ── */
     snprintf(date_buf, sizeof(date_buf), "%02u/%02u", g_day, g_month);
     oledC_DrawString(58u, 86u, 1u, 1u, (uint8_t *)date_buf, COL_TEXT);
+
+    /* Snapshot static elements so partial update knows when a full redraw is needed */
+    s_dig_ampm  = (g_hour >= 12u) ? 1u : 0u;
+    s_dig_day   = g_day;
+    s_dig_month = g_month;
+    s_dig_alarm = g_al_enabled ? 1u : 0u;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * DIGITAL CLOCK PARTIAL UPDATE  –  only the time string area, no screen clear.
+ * Called every second while in digital mode.  Full render_digital() is used
+ * when static elements (am/pm, date, alarm icon) change.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+static void render_digital_update(void)
+{
+    char    time_buf[10];
+    uint8_t h = g_hour;
+    if (g_fmt == FMT_12H) {
+        h = h % 12u;
+        if (h == 0u) h = 12u;
+    }
+    /* Erase old time area then redraw only the time string */
+    oledC_DrawRectangle(0u, 30u, 95u, 52u, COL_BG);
+    snprintf(time_buf, sizeof(time_buf), "%02u:%02u:%02u", h, g_min, g_sec);
+    oledC_DrawString(4u, 34u, 2u, 2u, (uint8_t *)time_buf, COL_TEXT);
 }
 
 /* ── Shared helper: draw all 12 hour tick marks ── */
@@ -620,11 +660,9 @@ static void render_analog(void)
 
     draw_analog_ticks();
 
-    /* ── Small clock icon top-left — only when alarm is active ── */
+    /* ── Alarm clock icon top-left — only when alarm is active ── */
     if (g_al_enabled) {
-        oledC_DrawCircle(6u, 6u, 5u, COL_TEXT);
-        draw_line_any(6u, 6u, 6u, 2u, COL_TEXT);   /* minute hand → 12 */
-        draw_line_any(6u, 6u, 9u, 6u, COL_TEXT);   /* hour hand   → 3  */
+        draw_alarm_clock_icon(7u, 8u, COL_TEXT);
     }
 
     /* ── Hands: hour=thick, minute=medium, second=thin ── */
@@ -638,11 +676,7 @@ static void render_analog(void)
     draw_hand(CLK_CX, CLK_CY, H_SEC,  sec_a,  COL_TEXT, HAND_W_SEC);
     oledC_DrawThickPoint(CLK_CX, CLK_CY, 2u, COL_TEXT);
 
-    /* am/pm bottom-left (always shown) */
-    oledC_DrawString(2u, 86u, 1u, 1u,
-                     (uint8_t *)((g_hour >= 12u) ? "pm" : "am"), COL_TEXT);
-
-    /* Date DD/MM bottom-right */
+    /* Date DD/MM bottom-right (no am/pm on analog face) */
     {
         char dline[6];
         snprintf(dline, sizeof(dline), "%02u/%02u", g_day, g_month);
@@ -1147,8 +1181,20 @@ int main(void)
                 /* Analog clock: erase old hands, redraw ticks, draw new hands.
                  * No screen clear → no flash. */
                 render_analog_update();
+            } else if (g_mode == MODE_CLOCK && g_disp == DISP_DIGITAL) {
+                /* Digital clock: only redraw the time string area each second.
+                 * Trigger a full redraw when am/pm, date, or alarm icon changes. */
+                uint8_t cur_ampm  = (g_hour >= 12u) ? 1u : 0u;
+                uint8_t cur_alarm = g_al_enabled ? 1u : 0u;
+                if (cur_ampm  != s_dig_ampm  || g_day   != s_dig_day  ||
+                    g_month   != s_dig_month || cur_alarm != s_dig_alarm ||
+                    s_dig_ampm == 0xFFu) {
+                    need_draw = true;   /* static element changed → full redraw */
+                } else {
+                    render_digital_update();
+                }
             } else {
-                need_draw = true;   /* digital / alarm screens: full redraw */
+                need_draw = true;   /* alarm screen: full redraw each second */
             }
         }
 
@@ -1234,6 +1280,22 @@ int main(void)
                 case MENU_TIME_S:
                 case MENU_ALARM_M:
                     nv = (uint8_t)((uint32_t)pot * 60u / 1024u);
+                    if (nv != g_edit_val) { g_edit_val = nv; need_draw = true; }
+                    break;
+
+                case MENU_DATE_D: {
+                    uint8_t mx = k_days[g_month - 1u];
+                    nv = (uint8_t)((uint32_t)pot * (uint32_t)mx / 1024u + 1u);
+                    if (nv < 1u) nv = 1u;
+                    if (nv > mx) nv = mx;
+                    if (nv != g_edit_val) { g_edit_val = nv; need_draw = true; }
+                    break;
+                }
+
+                case MENU_DATE_M:
+                    nv = (uint8_t)((uint32_t)pot * 12u / 1024u + 1u);
+                    if (nv < 1u) nv = 1u;
+                    if (nv > 12u) nv = 12u;
                     if (nv != g_edit_val) { g_edit_val = nv; need_draw = true; }
                     break;
 
