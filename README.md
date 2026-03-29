@@ -36,7 +36,7 @@ The watch has two display modes switchable from the menu.
 
 ## Menu
 
-Hold **S1 for 2 seconds** from the clock screen to open the menu. Press **S1** to scroll through items, **S2** to select. Shake / Flip Device to exit.
+Hold **S1 for 2 seconds** from the clock screen to open the menu. Press **S1** to scroll through items, **S2** to select. Shake or flip the device to exit the menu.
 
 | Item | What it does |
 |---|---|
@@ -53,7 +53,7 @@ Hold **S1 for 2 seconds** from the clock screen to open the menu. Press **S1** t
 3. Press **S2** to confirm and move to the next field.
 4. After the last field, the setting is saved and you return to the main menu.
 
-Arrows on the left side of the screen show which field is active.
+Arrows on the left side of the screen indicate the active field.
 
 ---
 
@@ -63,4 +63,5 @@ Arrows on the left side of the screen show which field is active.
 - When the alarm triggers, the screen flashes red and LEDs blink.
 - **Dismiss** by shaking the device, flipping it face-down, or pressing **S2**.
 - The alarm **auto-stops after 20 seconds** if not dismissed manually.
-- Any of these dismissal methods fully disables the alarm. Use **Set Alarm** again to re-enable it.
+- Any dismissal method fully disables the alarm. Use **Set Alarm** again to re-enable it.
+- You can also disable the alarm manually using **Alarm Off** in the menu.
