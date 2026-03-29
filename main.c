@@ -137,13 +137,14 @@ typedef enum {
     MENU_ALARM_M,           /* edit alarm minute               */
 } MenuSt;
 
-#define MENU_ITEM_COUNT  5u
+#define MENU_ITEM_COUNT  6u
 static const char * const k_menu_labels[MENU_ITEM_COUNT] = {
     "Display Mode",
     "12H/24H Format",
     "Set Time",
     "Set Date",
-    "Set Alarm"
+    "Set Alarm",
+    "Alarm Off"
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -410,11 +411,6 @@ static bool accel_flipped(void)
 /* ═══════════════════════════════════════════════════════════════════════════
  * DISPLAY HELPERS
  * ═══════════════════════════════════════════════════════════════════════════ */
-
-/*
- * oledC_DrawLine only iterates for x0 < x1 and only handles slope ≤ 1.
- * This replacement handles all 8 octants using standard Bresenham.
- */
 static void draw_line_any(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, uint16_t color)
 {
     int16_t dx  = (int16_t)x1 - (int16_t)x0;
@@ -506,8 +502,8 @@ static void draw_alarm_clock_icon(uint8_t cx, uint8_t cy, uint16_t color)
 
 /*
  * Small live clock string in the top-right corner.
- * Used to keep the time visible while inside any menu screen.
  */
+
 static void draw_corner_clock(void)
 {
     char buf[10];
@@ -577,7 +573,6 @@ static void render_digital_update(void)
     oledC_DrawString(4u, 34u, 2u, 2u, (uint8_t *)time_buf, COL_TEXT);
 }
 
-/* ── Shared helper: draw all 12 hour tick marks ── */
 static void draw_analog_ticks(void)
 {
     const float TWO_PI = 6.283185f;
@@ -595,7 +590,7 @@ static void draw_analog_ticks(void)
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * ANALOG CLOCK RENDERER  –  full redraw (called once on mode entry)
+ * ANALOG CLOCK RENDERER
  * ═══════════════════════════════════════════════════════════════════════════ */
 static void render_analog(void)
 {
@@ -637,8 +632,7 @@ static void render_analog(void)
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * ANALOG CLOCK PARTIAL UPDATE  –  erase old hands, redraw ticks, draw new
- * No screen clear → no flash.
+ * ANALOG CLOCK PARTIAL UPDATE
  * ═══════════════════════════════════════════════════════════════════════════ */
 static void render_analog_update(void)
 {
@@ -679,7 +673,6 @@ static void render_clock(void)
     oledC_setBackground(COL_BG);
     oledC_clearScreen();
     if (g_disp == DISP_DIGITAL) {
-        /* Invalidate stored analog state so partial update starts fresh next time */
         s_hand_sec = 0xFFu;
         render_digital();
     } else {
@@ -689,7 +682,6 @@ static void render_clock(void)
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * ALARM SCREEN RENDERER
- * Blinks by alternating background colour every second (g_blink_state).
  * ═══════════════════════════════════════════════════════════════════════════ */
 static void render_alarm(void)
 {
@@ -712,7 +704,6 @@ static void render_alarm(void)
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * MENU RENDERER
- * Each MenuSt has its own layout.  The live corner clock is always present.
  * ═══════════════════════════════════════════════════════════════════════════ */
 static void render_menu(void)
 {
@@ -725,9 +716,6 @@ static void render_menu(void)
 
     /* ─── MAIN MENU ─── */
     case MENU_MAIN: {
-        /* Items: scale-1 text (8 px tall), 11 px row pitch, start at y=10.
-         * Selected row: filled white box drawn first, then text in black.
-         * Other rows: white text on black. */
         uint8_t sel_y = (uint8_t)(10u + g_menu_cur * 11u);
         oledC_DrawRectangle(0u, sel_y - 2u, 95u, sel_y + 9u, COL_TEXT);
 
@@ -765,13 +753,12 @@ static void render_menu(void)
         oledC_DrawString(0u, 82u, 1u, 1u, (uint8_t *)"S1:toggle S2:set", COL_FACE);
         break;
 
-    /* ─── SET TIME  (H → M → S, box highlights active field) ─── */
+    /* ─── SET TIME  (H → M → S) ─── */
     case MENU_TIME_H:
     case MENU_TIME_M:
     case MENU_TIME_S: {
         uint8_t active = (uint8_t)(g_menu_st - MENU_TIME_H);   /* 0=H 1=M 2=S */
 
-        /* Values: active field comes from g_edit_val; committed fields from globals */
         uint8_t hv = (active == 0u) ? g_edit_val : g_hour;
         uint8_t mv = (active == 1u) ? g_edit_val : g_min;
         uint8_t sv = (active == 2u) ? g_edit_val : g_sec;
@@ -784,27 +771,25 @@ static void render_menu(void)
         /* Title */
         oledC_DrawString(20u, 14u, 1u, 1u, (uint8_t *)"SET TIME", COL_TEXT);
 
-        /* Up arrow ↑: solid triangle tip-up, shaft below */
+        /* Up arrow:*/
         oledC_DrawPoint(5u, 26u, COL_TEXT);
         draw_line_any(4u, 27u, 6u, 27u, COL_TEXT);
         draw_line_any(3u, 28u, 7u, 28u, COL_TEXT);
         draw_line_any(2u, 29u, 8u, 29u, COL_TEXT);
         draw_line_any(5u, 30u, 5u, 40u, COL_TEXT);
-        /* Down arrow ↓: shaft above, solid triangle tip-down */
+        /* Down arrow: */
         draw_line_any(5u, 62u, 5u, 72u, COL_TEXT);
         draw_line_any(2u, 72u, 8u, 72u, COL_TEXT);
         draw_line_any(3u, 73u, 7u, 73u, COL_TEXT);
         draw_line_any(4u, 74u, 6u, 74u, COL_TEXT);
         oledC_DrawPoint(5u, 75u, COL_TEXT);
 
-        /* Field X anchors (scale-2 → each 2-digit field is 24 px wide) */
         static const uint8_t fx[3] = { 12u, 40u, 68u };
         const uint8_t fy = 44u;
         const char * const fv[3] = { fh, fm, fs };
 
         for (uint8_t i = 0u; i < 3u; i++) {
             if (i == active) {
-                /* Filled white box — digit drawn in black on top */
                 oledC_DrawRectangle(fx[i] - 2u, fy - 2u,
                                     fx[i] + 24u, fy + 16u, COL_TEXT);
                 oledC_DrawString(fx[i], fy, 2u, 2u, (uint8_t *)fv[i], COL_BG);
@@ -817,7 +802,7 @@ static void render_menu(void)
         break;
     }
 
-    /* ─── SET DATE  (D → M, box highlights active field) ─── */
+    /* ─── SET DATE ─── */
     case MENU_DATE_D:
     case MENU_DATE_M: {
         uint8_t active = (uint8_t)(g_menu_st - MENU_DATE_D);   /* 0=D 1=M */
@@ -832,13 +817,13 @@ static void render_menu(void)
         oledC_DrawString(20u, 14u, 1u, 1u, (uint8_t *)"SET DATE", COL_TEXT);
 
         /* Up / down arrows */
-        /* Up arrow ↑: solid triangle tip-up, shaft below */
+        /* Up arrow: */
         oledC_DrawPoint(5u, 26u, COL_TEXT);
         draw_line_any(4u, 27u, 6u, 27u, COL_TEXT);
         draw_line_any(3u, 28u, 7u, 28u, COL_TEXT);
         draw_line_any(2u, 29u, 8u, 29u, COL_TEXT);
         draw_line_any(5u, 30u, 5u, 40u, COL_TEXT);
-        /* Down arrow ↓: shaft above, solid triangle tip-down */
+        /* Down arrow: */
         draw_line_any(5u, 62u, 5u, 72u, COL_TEXT);
         draw_line_any(2u, 72u, 8u, 72u, COL_TEXT);
         draw_line_any(3u, 73u, 7u, 73u, COL_TEXT);
@@ -863,7 +848,7 @@ static void render_menu(void)
         break;
     }
 
-    /* ─── SET ALARM  (H → M, box highlights active field) ─── */
+    /* ─── SET ALARM ─── */
     case MENU_ALARM_H:
     case MENU_ALARM_M: {
         uint8_t active = (uint8_t)(g_menu_st - MENU_ALARM_H);  /* 0=H 1=M */
@@ -878,13 +863,13 @@ static void render_menu(void)
         oledC_DrawString(16u, 14u, 1u, 1u, (uint8_t *)"SET ALARM", COL_TEXT);
 
         /* Up / down arrows */
-        /* Up arrow ↑: solid triangle tip-up, shaft below */
+        /* Up arrow: */
         oledC_DrawPoint(5u, 26u, COL_TEXT);
         draw_line_any(4u, 27u, 6u, 27u, COL_TEXT);
         draw_line_any(3u, 28u, 7u, 28u, COL_TEXT);
         draw_line_any(2u, 29u, 8u, 29u, COL_TEXT);
         draw_line_any(5u, 30u, 5u, 40u, COL_TEXT);
-        /* Down arrow ↓: shaft above, solid triangle tip-down */
+        /* Down arrow: */
         draw_line_any(5u, 62u, 5u, 72u, COL_TEXT);
         draw_line_any(2u, 72u, 8u, 72u, COL_TEXT);
         draw_line_any(3u, 73u, 7u, 73u, COL_TEXT);
@@ -945,10 +930,9 @@ static void menu_exit(void)
 
 /*
  * S1 short-press inside menu:
- *   MENU_MAIN      → move cursor down (wraps)
- *   DISP/FMT menus → toggle option
- *   editing states → ignored (potentiometer controls the value)
+ *   MENU_MAIN      → move cursor down
  */
+
 static void menu_s1_press(void)
 {
     switch (g_menu_st) {
@@ -982,6 +966,10 @@ static void menu_s2_press(void)
         case 2u: menu_enter_state(MENU_TIME_H);    break;
         case 3u: menu_enter_state(MENU_DATE_D);    break;
         case 4u: menu_enter_state(MENU_ALARM_H);   break;
+        case 5u:                                       /* Alarm Off — instant */
+            g_al_enabled = false;
+            g_al_ringing = false;
+            break;
         default: break;
         }
         break;
@@ -1059,19 +1047,17 @@ int main(void)
     bool s1_prev = false;
     bool s2_prev = false;
 
-    /* ── Long-press tracking for S1 (time-based, not iteration-based) ── */
-    uint16_t s1_press_start = 0u;   /* g_uptime_secs snapshot when S1 went down */
-    bool     s1_long_fired  = false; /* prevent re-firing while held */
+    /* ── Long-press tracking for S1 ── */
+    uint16_t s1_press_start = 0u;  
+    bool     s1_long_fired  = false;
 
-    /* ── Redraw flag: set whenever state changes ── */
     bool need_draw = true;
 
     /* ──────────────────────────────────────────────────────────────────────
-     * MAIN LOOP  (~10 ms / iteration)
+     * MAIN LOOP 
      * ────────────────────────────────────────────────────────────────────── */
     while (1) {
 
-        /* ── 1. CONSUME SECOND TICK ───────────────────────────────────── */
         if (g_tick) {
             g_tick = false;
             rtc_advance();
