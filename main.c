@@ -1074,7 +1074,6 @@ int main(void)
                 /* Only update the corner clock — avoids clearing the whole menu */
                 draw_corner_clock();
             } else if (g_mode == MODE_CLOCK && g_disp == DISP_ANALOG) {
-                /* Erase old hands, restore ticks, draw new hands — no clear, no flash */
                 render_analog_update();
             } else if (g_mode == MODE_CLOCK && g_disp == DISP_DIGITAL) {
                 /* Full redraw only when am/pm, date, or alarm icon changes */
@@ -1083,16 +1082,16 @@ int main(void)
                 if (cur_ampm  != s_dig_ampm  || g_day   != s_dig_day  ||
                     g_month   != s_dig_month || cur_alarm != s_dig_alarm ||
                     s_dig_ampm == 0xFFu) {
-                    need_draw = true;   /* static element changed → full redraw */
+                    need_draw = true;
                 } else {
                     render_digital_update();
                 }
             } else {
-                need_draw = true;   /* alarm screen: full redraw each second */
+                need_draw = true;
             }
         }
 
-        /* ── 2. READ BUTTONS ──────────────────────────────────────────── */
+        /* ──  READ BUTTONS ── */
         bool s1 = S1_PRESSED();
         bool s2 = S2_PRESSED();
 
@@ -1114,11 +1113,10 @@ int main(void)
             s1_long_fired = true;
         }
 
-        /* ── 3. READ ACCELEROMETER ───────────────────────────────────── */
+        /* ──  READ ACCELEROMETER ── */
         bool shaken  = accel_shaken();
         bool flipped = accel_flipped();
 
-        /* ── 5. STATE MACHINE ─────────────────────────────────────────── */
         switch (g_mode) {
 
         /* ============================================================
@@ -1146,7 +1144,7 @@ int main(void)
             if (s1) LED1_ON(); else LED1_OFF();
             if (s2) LED2_ON(); else LED2_OFF();
 
-            /* Shake or flip  →  exit menu immediately */
+            /* Shake or flip :  exit menu immediately */
             if (shaken || flipped) {
                 menu_exit();
                 LED1_OFF();  LED2_OFF();
@@ -1213,7 +1211,7 @@ int main(void)
             if (s1) LED1_ON(); else LED1_OFF();
             if (s2) LED2_ON(); else LED2_OFF();
 
-            /* Any button press, shake, or flip  →  stop alarm */
+            /* Any button press, shake, or flip  :  stop alarm */
             if (s1_rising || s2_rising || shaken || flipped) {
                 alarm_stop();
                 need_draw = true;
@@ -1221,7 +1219,6 @@ int main(void)
             break;
         }
 
-        /* ── 6. RENDER (only when something changed) ──────────────────── */
         if (need_draw) {
             need_draw = false;
             switch (g_mode) {
@@ -1231,13 +1228,11 @@ int main(void)
             }
         }
 
-        /* ── 6. UPDATE EDGE-DETECTION STATE + PACE LOOP ──────────────── */
         s1_prev = s1;
         s2_prev = s2;
 
-        DELAY_milliseconds(10);     /* ~100 Hz loop rate; long-press is ISR-timed */
+        DELAY_milliseconds(10);
     }
 
     return 0;
 }
-/* End of File */
