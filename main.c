@@ -139,7 +139,7 @@
 #define ALARM_AUTO_STOP     20u
 
 /* Days per month (non-leap year) */
-static const uint8_t k_days[12] = { 31,28,31,30,31,30,31,31,30,31,30,31 };
+#define DAYS_PER_MONTH  30u     /* all months capped at 30 days */
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * TYPE DEFINITIONS
@@ -375,7 +375,7 @@ static void rtc_advance(void)
     g_hour = 0;
 
     /* Midnight roll-over → advance date */
-    if (++g_day <= k_days[g_month - 1u]) return;
+    if (++g_day <= DAYS_PER_MONTH) return;
     g_day = 1;
 
     if (++g_month <= 12u) return;
@@ -1249,10 +1249,9 @@ int main(void)
                     break;
 
                 case MENU_DATE_D: {
-                    uint8_t mx = k_days[g_month - 1u];
-                    nv = (uint8_t)((uint32_t)pot * (uint32_t)mx / 1024u + 1u);
+                    nv = (uint8_t)((uint32_t)pot * DAYS_PER_MONTH / 1024u + 1u);
                     if (nv < 1u) nv = 1u;
-                    if (nv > mx) nv = mx;
+                    if (nv > DAYS_PER_MONTH) nv = DAYS_PER_MONTH;
                     if (nv != g_edit_val) { g_edit_val = nv; need_draw = true; }
                     break;
                 }
