@@ -54,7 +54,6 @@
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 #define ACCEL_WRITE_ADDR    0x3A        /* 7-bit addr 0x1D << 1 */
-#define ACCEL_REG_DEVID     0x00
 #define ACCEL_REG_PWRCTL    0x2D
 #define ACCEL_REG_DATAX0    0x32
 #define ACCEL_REG_DATAY0    0x34
@@ -1141,10 +1140,7 @@ int main(void)
             s1_long_fired = true;
         }
 
-        /* ── 3. READ POTENTIOMETER (AN8 / RB12) ──────────────────────── */
-        uint16_t pot = adc_read_pot();   /* 0–1023 */
-
-        /* ── 4. READ ACCELEROMETER ────────────────────────────────────── */
+        /* ── 3. READ ACCELEROMETER ───────────────────────────────────── */
         bool shaken  = accel_shaken();
         bool flipped = accel_flipped();
 
@@ -1186,6 +1182,7 @@ int main(void)
 
             /* ── Potentiometer: live value control (Set Time / Set Alarm only) ── */
             {
+                uint16_t pot = adc_read_pot();   /* 0–1023, read only when in menu */
                 uint8_t nv = 0u;
                 switch (g_menu_st) {
 
