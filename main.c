@@ -855,19 +855,14 @@ static void render_menu(void)
         const char * const fv[3] = { fh, fm, fs };
 
         for (uint8_t i = 0u; i < 3u; i++) {
-            uint16_t col = (i == active) ? COL_TEXT : COL_FACE;
-            oledC_DrawString(fx[i], fy, 2u, 2u, (uint8_t *)fv[i], col);
-        }
-
-        /* White outline box around the active field (DrawRectangle is filled,
-         * so use four lines to get a border-only look) */
-        {
-            uint8_t bx0 = fx[active] - 2u,  bx1 = fx[active] + 24u;
-            uint8_t by0 = fy - 2u,           by1 = fy + 16u;
-            oledC_DrawLine(bx0, by0, bx1, by0, 1u, COL_TEXT);
-            oledC_DrawLine(bx0, by1, bx1, by1, 1u, COL_TEXT);
-            oledC_DrawLine(bx0, by0, bx0, by1, 1u, COL_TEXT);
-            oledC_DrawLine(bx1, by0, bx1, by1, 1u, COL_TEXT);
+            if (i == active) {
+                /* Filled white box — digit drawn in black on top */
+                oledC_DrawRectangle(fx[i] - 2u, fy - 2u,
+                                    fx[i] + 24u, fy + 16u, COL_TEXT);
+                oledC_DrawString(fx[i], fy, 2u, 2u, (uint8_t *)fv[i], COL_BG);
+            } else {
+                oledC_DrawString(fx[i], fy, 2u, 2u, (uint8_t *)fv[i], COL_FACE);
+            }
         }
 
         oledC_DrawString(4u, 82u, 1u, 1u, (uint8_t *)"S1:+1  S2:next", COL_FACE);
@@ -901,16 +896,13 @@ static void render_menu(void)
         const char * const dfv[2] = { fd, fm };
 
         for (uint8_t i = 0u; i < 2u; i++) {
-            uint16_t col = (i == active) ? COL_TEXT : COL_FACE;
-            oledC_DrawString(dfx[i], dfy, 2u, 2u, (uint8_t *)dfv[i], col);
-        }
-        {
-            uint8_t bx0 = dfx[active] - 2u,  bx1 = dfx[active] + 24u;
-            uint8_t by0 = dfy - 2u,           by1 = dfy + 16u;
-            oledC_DrawLine(bx0, by0, bx1, by0, 1u, COL_TEXT);
-            oledC_DrawLine(bx0, by1, bx1, by1, 1u, COL_TEXT);
-            oledC_DrawLine(bx0, by0, bx0, by1, 1u, COL_TEXT);
-            oledC_DrawLine(bx1, by0, bx1, by1, 1u, COL_TEXT);
+            if (i == active) {
+                oledC_DrawRectangle(dfx[i] - 2u, dfy - 2u,
+                                    dfx[i] + 24u, dfy + 16u, COL_TEXT);
+                oledC_DrawString(dfx[i], dfy, 2u, 2u, (uint8_t *)dfv[i], COL_BG);
+            } else {
+                oledC_DrawString(dfx[i], dfy, 2u, 2u, (uint8_t *)dfv[i], COL_FACE);
+            }
         }
 
         oledC_DrawString(4u, 82u, 1u, 1u, (uint8_t *)"S1:+1  S2:next", COL_FACE);
@@ -944,16 +936,13 @@ static void render_menu(void)
         const char * const afv[2] = { fh, fm };
 
         for (uint8_t i = 0u; i < 2u; i++) {
-            uint16_t col = (i == active) ? COL_TEXT : COL_FACE;
-            oledC_DrawString(afx[i], afy, 2u, 2u, (uint8_t *)afv[i], col);
-        }
-        {
-            uint8_t bx0 = afx[active] - 2u,  bx1 = afx[active] + 24u;
-            uint8_t by0 = afy - 2u,           by1 = afy + 16u;
-            oledC_DrawLine(bx0, by0, bx1, by0, 1u, COL_TEXT);
-            oledC_DrawLine(bx0, by1, bx1, by1, 1u, COL_TEXT);
-            oledC_DrawLine(bx0, by0, bx0, by1, 1u, COL_TEXT);
-            oledC_DrawLine(bx1, by0, bx1, by1, 1u, COL_TEXT);
+            if (i == active) {
+                oledC_DrawRectangle(afx[i] - 2u, afy - 2u,
+                                    afx[i] + 24u, afy + 16u, COL_TEXT);
+                oledC_DrawString(afx[i], afy, 2u, 2u, (uint8_t *)afv[i], COL_BG);
+            } else {
+                oledC_DrawString(afx[i], afy, 2u, 2u, (uint8_t *)afv[i], COL_FACE);
+            }
         }
 
         oledC_DrawString(4u, 82u, 1u, 1u, (uint8_t *)"S1:+1  S2:next", COL_FACE);
