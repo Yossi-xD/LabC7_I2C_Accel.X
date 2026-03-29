@@ -83,16 +83,8 @@
 /* Colour palette used by the app */
 #define COL_BG          OLEDC_COLOR_BLACK
 #define COL_TEXT        OLEDC_COLOR_WHITE
-#define COL_TIME        OLEDC_COLOR_CYAN
-#define COL_DATE        OLEDC_COLOR_YELLOW
-#define COL_ALARM_ICON  OLEDC_COLOR_RED
 #define COL_FACE        OLEDC_COLOR_DARKGRAY
-#define COL_HAND_SEC    OLEDC_COLOR_RED
-#define COL_HAND_MIN    OLEDC_COLOR_WHITE
-#define COL_HAND_HOUR   OLEDC_COLOR_YELLOW
-#define COL_MENU_SEL    OLEDC_COLOR_CYAN
 #define COL_MENU_ITEM   OLEDC_COLOR_WHITE
-#define COL_MENU_HDR    OLEDC_COLOR_YELLOW
 #define COL_CORNER_CLK  OLEDC_COLOR_DARKGRAY
 #define COL_ALARM_BG    OLEDC_COLOR_DARKRED
 #define COL_ALARM_TEXT  OLEDC_COLOR_WHITE
@@ -301,16 +293,17 @@ static void accel_init(void)
  * POTENTIOMETER
  * ═══════════════════════════════════════════════════════════════════════════ */
 static void adc_init(void)
-ANSBbits.ANSB12   = 1;
-TRISBbits.TRISB12 = 1;
+{
+    ANSBbits.ANSB12   = 1;   /* RB12 / AN8 → analog mode */
+    TRISBbits.TRISB12 = 1;   /* input */
 
-AD1CON1bits.ADON = 0;
-AD1CON1 = 0x0000;
-AD1CON2 = 0x0000;
-AD1CON3 = 0x0F02;
-AD1CHS  = 8u;
-AD1CON1bits.ADON = 1;
-DELAY_milliseconds(1);
+    AD1CON1bits.ADON = 0;
+    AD1CON1 = 0x0000;        /* integer output, manual sample/convert */
+    AD1CON2 = 0x0000;        /* Vdd/Vss reference, CH0 */
+    AD1CON3 = 0x0F02;        /* Tad = 3·Tcy, 15 Tad sample */
+    AD1CHS  = 8u;            /* AN8 */
+    AD1CON1bits.ADON = 1;
+    DELAY_milliseconds(1);
 }
 
 /* Single-shot read with timeout so a misconfigured ADC never hangs the loop. */
