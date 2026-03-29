@@ -173,17 +173,15 @@ typedef enum {
     MENU_DATE_M,            /* edit month                      */
     MENU_ALARM_H,           /* edit alarm hour                 */
     MENU_ALARM_M,           /* edit alarm minute               */
-    MENU_ALARM_OFF          /* confirm disable alarm           */
 } MenuSt;
 
-#define MENU_ITEM_COUNT  6u
+#define MENU_ITEM_COUNT  5u
 static const char * const k_menu_labels[MENU_ITEM_COUNT] = {
     "Display Mode",
     "12H/24H Format",
     "Set Time",
     "Set Date",
-    "Set Alarm",
-    "Alarm Off"
+    "Set Alarm"
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -403,6 +401,7 @@ static void alarm_check(void)
 static void alarm_stop(void)
 {
     g_al_ringing = false;
+    g_al_enabled = false;   /* dismiss and disable — shake/flip/auto-stop turns it off */
     g_al_secs    = 0;
     g_mode       = MODE_CLOCK;
     oledC_setBackground(COL_BG);
@@ -884,12 +883,12 @@ static void render_menu(void)
         oledC_DrawString(20u, 14u, 1u, 1u, (uint8_t *)"SET DATE", COL_TEXT);
 
         /* Up / down arrows */
-        oledC_DrawLine(5u, 30u, 1u, 35u, 1u, COL_TEXT);
-        oledC_DrawLine(5u, 30u, 9u, 35u, 1u, COL_TEXT);
-        oledC_DrawLine(5u, 30u, 5u, 42u, 1u, COL_TEXT);
-        oledC_DrawLine(5u, 68u, 1u, 63u, 1u, COL_TEXT);
-        oledC_DrawLine(5u, 68u, 9u, 63u, 1u, COL_TEXT);
-        oledC_DrawLine(5u, 56u, 5u, 68u, 1u, COL_TEXT);
+        draw_line_any(5u, 30u, 1u, 35u, COL_TEXT);   /* up arrow left  leg */
+        draw_line_any(5u, 30u, 9u, 35u, COL_TEXT);   /* up arrow right leg */
+        draw_line_any(5u, 30u, 5u, 42u, COL_TEXT);   /* up arrow shaft     */
+        draw_line_any(5u, 68u, 1u, 63u, COL_TEXT);   /* dn arrow left  leg */
+        draw_line_any(5u, 68u, 9u, 63u, COL_TEXT);   /* dn arrow right leg */
+        draw_line_any(5u, 56u, 5u, 68u, COL_TEXT);   /* dn arrow shaft     */
 
         static const uint8_t dfx[2] = { 20u, 56u };
         const uint8_t dfy = 44u;
@@ -924,12 +923,12 @@ static void render_menu(void)
         oledC_DrawString(16u, 14u, 1u, 1u, (uint8_t *)"SET ALARM", COL_TEXT);
 
         /* Up / down arrows */
-        oledC_DrawLine(5u, 30u, 1u, 35u, 1u, COL_TEXT);
-        oledC_DrawLine(5u, 30u, 9u, 35u, 1u, COL_TEXT);
-        oledC_DrawLine(5u, 30u, 5u, 42u, 1u, COL_TEXT);
-        oledC_DrawLine(5u, 68u, 1u, 63u, 1u, COL_TEXT);
-        oledC_DrawLine(5u, 68u, 9u, 63u, 1u, COL_TEXT);
-        oledC_DrawLine(5u, 56u, 5u, 68u, 1u, COL_TEXT);
+        draw_line_any(5u, 30u, 1u, 35u, COL_TEXT);   /* up arrow left  leg */
+        draw_line_any(5u, 30u, 9u, 35u, COL_TEXT);   /* up arrow right leg */
+        draw_line_any(5u, 30u, 5u, 42u, COL_TEXT);   /* up arrow shaft     */
+        draw_line_any(5u, 68u, 1u, 63u, COL_TEXT);   /* dn arrow left  leg */
+        draw_line_any(5u, 68u, 9u, 63u, COL_TEXT);   /* dn arrow right leg */
+        draw_line_any(5u, 56u, 5u, 68u, COL_TEXT);   /* dn arrow shaft     */
 
         static const uint8_t afx[2] = { 20u, 56u };
         const uint8_t afy = 44u;
@@ -948,13 +947,6 @@ static void render_menu(void)
         oledC_DrawString(4u, 82u, 1u, 1u, (uint8_t *)"S1:+1  S2:next", COL_FACE);
         break;
     }
-
-    /* ─── DISABLE ALARM ─── */
-    case MENU_ALARM_OFF:
-        oledC_DrawString(0u, 20u, 1u, 1u, (uint8_t *)"Disable Alarm?", COL_TEXT);
-        oledC_DrawString(0u, 44u, 1u, 1u, (uint8_t *)"S2: Yes",        COL_TEXT);
-        oledC_DrawString(0u, 58u, 1u, 1u, (uint8_t *)"S1: No / back",  COL_FACE);
-        break;
 
     default: break;
     }
@@ -1029,11 +1021,6 @@ static void menu_s1_press(void)
         g_edit_val = (g_edit_val % 12u) + 1u;
         break;
 
-    case MENU_ALARM_OFF:
-        /* S1 = cancel – go back to main menu without disabling */
-        g_menu_st = MENU_MAIN;
-        break;
-
     default: break;
     }
 }
@@ -1055,7 +1042,6 @@ static void menu_s2_press(void)
         case 2u: menu_enter_state(MENU_TIME_H);    break;
         case 3u: menu_enter_state(MENU_DATE_D);    break;
         case 4u: menu_enter_state(MENU_ALARM_H);   break;
-        case 5u: menu_enter_state(MENU_ALARM_OFF); break;
         default: break;
         }
         break;
@@ -1104,12 +1090,6 @@ static void menu_s2_press(void)
     case MENU_ALARM_M:
         g_al_min     = g_edit_val;
         g_al_enabled = true;            /* activates the alarm */
-        g_menu_st    = MENU_MAIN;
-        break;
-
-    case MENU_ALARM_OFF:
-        g_al_enabled = false;
-        g_al_ringing = false;
         g_menu_st    = MENU_MAIN;
         break;
 
