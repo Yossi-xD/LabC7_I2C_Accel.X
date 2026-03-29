@@ -883,12 +883,18 @@ static void render_menu(void)
         oledC_DrawString(20u, 14u, 1u, 1u, (uint8_t *)"SET DATE", COL_TEXT);
 
         /* Up / down arrows */
-        draw_line_any(5u, 30u, 1u, 35u, COL_TEXT);   /* up arrow left  leg */
-        draw_line_any(5u, 30u, 9u, 35u, COL_TEXT);   /* up arrow right leg */
-        draw_line_any(5u, 30u, 5u, 42u, COL_TEXT);   /* up arrow shaft     */
-        draw_line_any(5u, 68u, 1u, 63u, COL_TEXT);   /* dn arrow left  leg */
-        draw_line_any(5u, 68u, 9u, 63u, COL_TEXT);   /* dn arrow right leg */
-        draw_line_any(5u, 56u, 5u, 68u, COL_TEXT);   /* dn arrow shaft     */
+        /* Up arrow ↑: solid triangle tip-up, shaft below */
+        oledC_DrawPoint(5u, 26u, COL_TEXT);
+        draw_line_any(4u, 27u, 6u, 27u, COL_TEXT);
+        draw_line_any(3u, 28u, 7u, 28u, COL_TEXT);
+        draw_line_any(2u, 29u, 8u, 29u, COL_TEXT);
+        draw_line_any(5u, 30u, 5u, 40u, COL_TEXT);
+        /* Down arrow ↓: shaft above, solid triangle tip-down */
+        draw_line_any(5u, 62u, 5u, 72u, COL_TEXT);
+        draw_line_any(2u, 72u, 8u, 72u, COL_TEXT);
+        draw_line_any(3u, 73u, 7u, 73u, COL_TEXT);
+        draw_line_any(4u, 74u, 6u, 74u, COL_TEXT);
+        oledC_DrawPoint(5u, 75u, COL_TEXT);
 
         static const uint8_t dfx[2] = { 20u, 56u };
         const uint8_t dfy = 44u;
@@ -923,12 +929,18 @@ static void render_menu(void)
         oledC_DrawString(16u, 14u, 1u, 1u, (uint8_t *)"SET ALARM", COL_TEXT);
 
         /* Up / down arrows */
-        draw_line_any(5u, 30u, 1u, 35u, COL_TEXT);   /* up arrow left  leg */
-        draw_line_any(5u, 30u, 9u, 35u, COL_TEXT);   /* up arrow right leg */
-        draw_line_any(5u, 30u, 5u, 42u, COL_TEXT);   /* up arrow shaft     */
-        draw_line_any(5u, 68u, 1u, 63u, COL_TEXT);   /* dn arrow left  leg */
-        draw_line_any(5u, 68u, 9u, 63u, COL_TEXT);   /* dn arrow right leg */
-        draw_line_any(5u, 56u, 5u, 68u, COL_TEXT);   /* dn arrow shaft     */
+        /* Up arrow ↑: solid triangle tip-up, shaft below */
+        oledC_DrawPoint(5u, 26u, COL_TEXT);
+        draw_line_any(4u, 27u, 6u, 27u, COL_TEXT);
+        draw_line_any(3u, 28u, 7u, 28u, COL_TEXT);
+        draw_line_any(2u, 29u, 8u, 29u, COL_TEXT);
+        draw_line_any(5u, 30u, 5u, 40u, COL_TEXT);
+        /* Down arrow ↓: shaft above, solid triangle tip-down */
+        draw_line_any(5u, 62u, 5u, 72u, COL_TEXT);
+        draw_line_any(2u, 72u, 8u, 72u, COL_TEXT);
+        draw_line_any(3u, 73u, 7u, 73u, COL_TEXT);
+        draw_line_any(4u, 74u, 6u, 74u, COL_TEXT);
+        oledC_DrawPoint(5u, 75u, COL_TEXT);
 
         static const uint8_t afx[2] = { 20u, 56u };
         const uint8_t afy = 44u;
